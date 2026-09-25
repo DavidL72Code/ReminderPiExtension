@@ -83,7 +83,8 @@ Step by step:
 | `extension/generate-log-cli.ts` | CLI that writes `test.json` |
 | `extension/test.json` | Simulated-time audit log of every interaction |
 | `extension/test-log.test.ts` | Jest tests validating the audit log |
-| `extension/live-rpc-test.js` | Drives a **real Pi process** to verify live behavior |
+| `extension/live-rpc-test.js` | Drives a **real Pi process** to verify live command behavior |
+| `extension/live-startup-test.js` | Drives **real Pi startup** to verify the automatic reminder |
 | `extension/types/pi-coding-agent.d.ts` | Local type declarations for the Pi API |
 | `SPEC.md` | Requirements, acceptance criteria, and testing strategy |
 
@@ -99,7 +100,8 @@ inject any time. Testing happened in four layers:
 | 1. Python unit tests | explicit `datetime` argument | pure time policy |
 | 2. Jest unit tests | explicit `Date` arg + `setClock()` | policy + mocked UI flow |
 | 3. Audit log | `test.json` via `npm run generate-log` | every check is recorded |
-| 4. **Live Pi (RPC)** | `/reminder-check HH:MM` over RPC | **real Pi UI, in-process** |
+| 4. **Live Pi command (RPC)** | `/reminder-check HH:MM` over RPC | **real Pi UI, in-process** |
+| 5. **Live Pi startup** | `PIREMINDER_NOW=HH:MM pi …` | **the automatic `session_start` reminder** |
 
 ### Running the tests
 
@@ -107,20 +109,78 @@ inject any time. Testing happened in four layers:
 # Python policy tests
 python3 -m unittest test_reminder -v
 
-# TypeScript unit tests + audit-log tests (20 tests)
+# TypeScript unit tests + audit-log tests (22 tests)
 cd extension && npm install && npm test
 
 # Regenerate the audit log
 npm run generate-log
 
-# Live Pi RPC test (spawns a real `pi` process)
+# Live Pi RPC test: spawns a real `pi` process, 6 success/fail cases
 npm run test:live
+
+# Live Pi startup test: proves the automatic reminder fires without a command
+npm run test:startup
 ```
 
-### Live Pi environment testing
+## Test it yourself (no need to wait until midnight)
 
-This is the important part: the behavior is verified inside a **real running Pi
-process**, not just mocks.
+You do **not** have to change your system clock or stay up until 00:00. There
+are three ways, from easiest to most thorough.
+
+### 1. Type a simulated time into a running Pi — fastest
+
+Restart Pi (so it loads the extension) and type:
+
+```
+/reminder-check 02:30
+```
+
+You will immediately see the real notification and the yes/no popup, as if it
+were 02:30. Try the other cases:
+
+| Type this | What you should see |
+|---|---|
+| `/reminder-check 02:30 reset` | notification + yes/no popup (clears dedup first) |
+| `/reminder-check 02:35` | **silent** — already reminded today |
+| `/reminder-check 05:59 reset` | notification + yes/no popup |
+| `/reminder-check 06:00 reset` | **silent** — outside the window |
+| `/reminder-check 14:00 reset` | **silent** — daytime |
+| `/reminder-check 25:00` | warning notification (invalid hour) |
+| `/reminder-check abc` | usage warning (invalid format) |
+
+### 2. Launch Pi with a fake clock so the AUTOMATIC reminder fires
+
+This tests the real `session_start` path (no command needed). Set the
+`PIREMINDER_NOW` environment variable to any `HH:MM`:
+
+```bash
+PIREMINDER_NOW=02:30 pi --extension ~/.pi/agent/extensions/reminder.ts
+```
+
+When the session starts, PiReminder believes it is 02:30 and shows the real
+notification + yes/no popup on its own.
+
+| Launch with | Result at startup |
+|---|---|
+| `PIREMINDER_NOW=02:30 pi …` | reminder + popup |
+| `PIREMINDER_NOW=05:59 pi …` | reminder + popup |
+| `PIREMINDER_NOW=06:00 pi …` | silent |
+| `PIREMINDER_NOW=14:00 pi …` | silent |
+
+`PIREMINDER_NOW` only overrides the reminder's view of the clock. It has **no
+effect when unset**, so normal behavior is unchanged.
+
+### 3. Run the automated live tests
+
+```bash
+cd extension
+npm run test:startup   # spawns a real Pi with PIREMINDER_NOW and expects the popup
+npm run test:live      # spawns a real Pi and runs 6 success/fail command cases
+```
+
+Both print `pass: true` when the live Pi behavior is correct.
+
+## Live Pi test details (actual output)
 
 **A. Quick load check.** Pi starts with the extension and runs normally:
 
@@ -137,7 +197,7 @@ command at simulated times. In RPC mode Pi forwards the extension's real
 `ctx.ui.notify` and `ctx.ui.confirm` calls over stdout, and the script answers
 the yes/no dialog. Run it with `npm run test:live`. Actual output:
 
-```
+```text
 [command registered] get_commands → reminder-check: true
 
 [first trigger (reset)] /reminder-check 02:30 reset
@@ -146,35 +206,45 @@ the yes/no dialog. Run it with `npm run test:live`. Actual output:
         in the morning. Do you acknowledge this advice?
       → answering: confirmed=true
       notify(info): Great — rest well and pick it up in the morning. 👋
+      expected=popup+notify observed=dialogs=1 notifications=2 → PASS
 
 [repeat same day] /reminder-check 02:35
-      silent
+      expected=silent observed=dialogs=0 notifications=0 → PASS
 
 [daytime out-of-window] /reminder-check 14:00 reset
-      silent
+      expected=silent observed=dialogs=0 notifications=0 → PASS
 
 [invalid hour] /reminder-check 25:00 reset
       notify(warning): Invalid time. Use HH:MM (00:00–23:59).
+      expected=warning observed=dialogs=0 notifications=1 warning=true → PASS
 
 [invalid format] /reminder-check abc reset
       notify(warning): Usage: /reminder-check HH:MM [reset] (…)
+      expected=warning observed=dialogs=0 notifications=1 warning=true → PASS
 
 === allPass: true ===
 ```
 
-**C. Manual check in interactive Pi.** Start Pi and type:
+**C. Automatic startup test.** `extension/live-startup-test.js` spawns Pi with
+`PIREMINDER_NOW=02:30` and **no command**, proving the extension fires the
+reminder on its own from `session_start`. Run it with `npm run test:startup`.
+(Note: `session_start` does not fire under `--no-session`, so this test uses a
+temporary `--session-dir`.) Verified results:
 
-```
-/reminder-check 02:30
-```
+| Launch with | Result |
+|---|---|
+| `PIREMINDER_NOW=02:30` | reminder + popup |
+| `PIREMINDER_NOW=05:59` | reminder + popup |
+| `PIREMINDER_NOW=06:00` | silent |
+| `PIREMINDER_NOW=14:00` | silent |
 
-This runs the real notification + yes/no popup at the simulated time `02:30`,
-without touching the system clock. Add `reset` to clear the dedup for a repeat:
-`/reminder-check 02:30 reset`.
+**D. Manual check in interactive Pi.** Start Pi and type `/reminder-check 02:30`
+to see the real notification + yes/no popup at that simulated time. Add `reset`
+to clear the dedup for a repeat. See "Test it yourself" above for the full list.
 
-The same `/reminder-check` idea is also why the extension exposes the clock as
-`getNow()` — the real path uses `new Date()` + the 5-minute interval, while
-every test path injects a time.
+The extension exposes the clock as `getNow()` — the real path uses `new Date()`
+(optionally overridden by `PIREMINDER_NOW`) plus the 5-minute interval, while
+every unit-test path injects a time.
 
 ## Success cases
 
@@ -182,6 +252,7 @@ every test path injects a time.
 |---|---|---|---|---|
 | 1 | Extension loads in real Pi | starts cleanly | live `pi -p` run | ✅ |
 | 2 | `reminder-check` command registered | present in `get_commands` | live RPC | ✅ |
+| 3 | **Automatic** reminder at startup | popup fires with no command | live startup test (`PIREMINDER_NOW=02:30`) | ✅ |
 | 3 | First trigger at 00:00 | notification + yes/no popup | live RPC + Jest + `test.json` | ✅ |
 | 4 | First trigger at 05:59 | notification + yes/no popup | `test.json`, Jest | ✅ |
 | 5 | Answer **yes** | positive reply, no repeats | live RPC + Jest | ✅ |
@@ -195,7 +266,7 @@ every test path injects a time.
 |---|---|---|---|---|
 | 1 | 23:59 | no reminder (outside window) | Python + Jest + `test.json` | ✅ |
 | 2 | 06:00 | no reminder (exclusive end) | Python + Jest + `test.json` | ✅ |
-| 3 | Any time 06:00–23:59 | no popup, no notification | live RPC + Jest + `test.json` (18 checks) | ✅ |
+| 3 | Any time 06:00–23:59 | no popup, no notification | live startup test + RPC + Jest + `test.json` | ✅ |
 | 4 | Already reminded today | silent, no duplicate | live RPC + Jest + `test.json` | ✅ |
 | 5 | Invalid hour (`25:00`) | warning notification, no popup | live RPC | ✅ |
 | 6 | Invalid format (`abc`) | usage warning, no popup | live RPC | ✅ |

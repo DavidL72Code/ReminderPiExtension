@@ -20,7 +20,7 @@ declare module "@earendil-works/pi-coding-agent" {
 	export interface ExtensionAPI {
 		on(
 			event: string,
-			handler: (ctx: ExtensionContext) => Promise<void>,
+			handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void,
 		): void;
 		registerCommand(
 			name: string,

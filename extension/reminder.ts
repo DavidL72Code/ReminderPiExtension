@@ -18,6 +18,31 @@ const WINDOW_END_MINUTES = 6 * 60; // 360 minutes
 /** Check interval: every 5 minutes. */
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
+/**
+ * Test/demo escape hatch: set PIREMINDER_NOW=HH:MM to pretend the wall clock
+ * is that time. This lets the automatic session_start reminder be exercised
+ * without waiting until the middle of the night. It has no effect when unset.
+ */
+export const NOW_OVERRIDE_ENV = "PIREMINDER_NOW";
+
+/** Resolve "now", honoring the PIREMINDER_NOW override if present. */
+function resolveNow(): Date {
+	const override = process.env[NOW_OVERRIDE_ENV];
+	if (override) {
+		const match = override.match(/^(\d{1,2}):(\d{2})$/);
+		if (match) {
+			const hour = Number(match[1]);
+			const minute = Number(match[2]);
+			if (hour <= 23 && minute <= 59) {
+				const d = new Date();
+				d.setHours(hour, minute, 0, 0);
+				return d;
+			}
+		}
+	}
+	return new Date();
+}
+
 /** Date string of the last day we reminded (dedup state). */
 let remindedDate: string | null = null;
 
@@ -25,7 +50,7 @@ let remindedDate: string | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 /** Clock function — overridable for deterministic testing. */
-let getNow: () => Date = () => new Date();
+let getNow: () => Date = resolveNow;
 
 const REMINDER_MESSAGE =
 	"It's late — take a break and continue again in the morning.";
@@ -94,7 +119,9 @@ export async function checkAndNotify(
 export default function (pi: ExtensionAPI) {
 	// Start periodic checks when a session begins.
 	// Per Pi lifecycle rules, timers must not be started in the factory.
-	pi.on("session_start", async (ctx) => {
+	// NOTE: Pi event handlers receive (event, ctx) — the context is the
+	// SECOND argument. Taking only one parameter would capture the event.
+	pi.on("session_start", async (_event, ctx) => {
 		await checkAndNotify(ctx);
 		timer = setInterval(() => checkAndNotify(ctx), CHECK_INTERVAL_MS);
 	});
@@ -143,9 +170,9 @@ export default function (pi: ExtensionAPI) {
 
 // --- Testing utilities ---
 
-/** Override the clock (leave undefined to restore real time). */
+/** Override the clock (leave undefined to restore the default resolver). */
 export function setClock(fn?: () => Date): void {
-	getNow = fn ?? (() => new Date());
+	getNow = fn ?? resolveNow;
 }
 
 /** Reset all state (for testing). */

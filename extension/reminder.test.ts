@@ -11,6 +11,7 @@ import reminder, {
 	resetState,
 	checkAndNotify,
 	setClock,
+	NOW_OVERRIDE_ENV,
 } from "./reminder";
 
 // ---------------------------------------------------------------------------
@@ -153,6 +154,27 @@ describe("checkAndNotify", () => {
 		await checkAndNotify(ctx); // no explicit `now`
 		expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
 	});
+
+	it("honors PIREMINDER_NOW for the automatic path", async () => {
+		const original = process.env[NOW_OVERRIDE_ENV];
+		process.env[NOW_OVERRIDE_ENV] = "02:30";
+		try {
+			setClock(); // restore default resolver (reads env)
+			resetState();
+			const ctx = mockCtx();
+			await checkAndNotify(ctx); // no explicit time → resolveNow()
+			expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+
+			// Repeat same (simulated) day is silent.
+			const ctx2 = mockCtx();
+			await checkAndNotify(ctx2);
+			expect(ctx2.ui.confirm).not.toHaveBeenCalled();
+		} finally {
+			if (original === undefined) delete process.env[NOW_OVERRIDE_ENV];
+			else process.env[NOW_OVERRIDE_ENV] = original;
+			setClock();
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -191,5 +213,37 @@ describe("extension factory", () => {
 
 		expect(events).toEqual(["session_start", "session_shutdown"]);
 		expect(commands).toEqual(["reminder-check"]);
+	});
+
+	it("session_start handler takes (event, ctx) so the automatic reminder fires", async () => {
+		jest.useFakeTimers();
+		try {
+			const handlers: Record<string, (...args: any[]) => any> = {};
+			const fakePi = {
+				on: (event: string, handler: (...args: any[]) => any) => {
+					handlers[event] = handler;
+				},
+				registerCommand: () => {},
+				registerTool: () => {},
+			} as any;
+
+			reminder(fakePi);
+			resetState();
+			setClock(() => atTime(2, 30)); // simulate 02:30
+
+			const ctx = mockCtx();
+			// Emit exactly as Pi does: (event, ctx). The ctx must be second.
+			await handlers["session_start"](
+				{ type: "session_start", reason: "startup" },
+				ctx,
+			);
+			expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+
+			// Cleanup the interval the handler registered.
+			resetState();
+		} finally {
+			setClock();
+			jest.useRealTimers();
+		}
 	});
 });
