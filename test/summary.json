@@ -1,0 +1,142 @@
+{
+  "generatedAt": "2026-09-25T20:40:17.177Z",
+  "systemTime": "Fri Sep 25 2026 16:40:17 GMT-0400 (Eastern Daylight Time)",
+  "pi": {
+    "provider": "openrouter",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "sessionId": "01a0da27-2df9-77c9-9b3e-cf9babb67296"
+  },
+  "totals": {
+    "cases": 21,
+    "passed": 21,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "file": "test_1.json",
+      "name": "23:59 does not remind (outside window)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_2.json",
+      "name": "00:00 reminds (window start, inclusive)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_3.json",
+      "name": "05:59 reminds (inside window)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_4.json",
+      "name": "06:00 does not remind (window end, exclusive)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_5.json",
+      "name": "Already reminded today → no duplicate",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_6.json",
+      "name": "Next calendar day resumes reminders",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_7.json",
+      "name": "No reminders from 06:00 to 23:59 (18 checks)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_8.json",
+      "name": "First trigger at 02:30, answer YES",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_9.json",
+      "name": "First trigger at 05:59, answer NO",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_10.json",
+      "name": "Repeat same day is silent (no popup, no notify)",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_11.json",
+      "name": "Daytime 14:00 is silent",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_12.json",
+      "name": "PIREMINDER_NOW=02:30 fires the automatic reminder",
+      "category": "automatic",
+      "pass": true
+    },
+    {
+      "file": "test_13.json",
+      "name": "PIREMINDER_NOW=14:00 stays silent",
+      "category": "automatic",
+      "pass": true
+    },
+    {
+      "file": "test_14.json",
+      "name": "Live Pi: reminder-check command registered",
+      "category": "live-rpc",
+      "pass": true
+    },
+    {
+      "file": "test_15.json",
+      "name": "Live Pi: first trigger (reset) shows popup + notify",
+      "category": "live-rpc",
+      "pass": true
+    },
+    {
+      "file": "test_16.json",
+      "name": "Live Pi: repeat same day is silent",
+      "category": "live-rpc",
+      "pass": true
+    },
+    {
+      "file": "test_17.json",
+      "name": "Live Pi: daytime 14:00 is silent",
+      "category": "live-rpc",
+      "pass": true
+    },
+    {
+      "file": "test_18.json",
+      "name": "Live Pi: invalid hour 25:00 warns",
+      "category": "live-rpc",
+      "pass": true
+    },
+    {
+      "file": "test_19.json",
+      "name": "Live Pi: invalid format 'abc' warns",
+      "category": "live-rpc",
+      "pass": true
+    },
+    {
+      "file": "test_20.json",
+      "name": "Live Pi startup: PIREMINDER_NOW=02:30 reminds",
+      "category": "live-boot",
+      "pass": true
+    },
+    {
+      "file": "test_21.json",
+      "name": "Live Pi startup: PIREMINDER_NOW=06:00 stays silent",
+      "category": "live-boot",
+      "pass": true
+    }
+  ]
+}

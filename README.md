@@ -85,6 +85,9 @@ Step by step:
 | `extension/test-log.test.ts` | Jest tests validating the audit log |
 | `extension/live-rpc-test.js` | Drives a **real Pi process** to verify live command behavior |
 | `extension/live-startup-test.js` | Drives **real Pi startup** to verify the automatic reminder |
+| `extension/write-test-files.ts` | Runs every case and writes `test/test_N.json` files |
+| `test/test_N.json` | One file per test case: input, expected, actual, pass |
+| `test/summary.json` | Roll-up of all test cases (totals + index) |
 | `extension/types/pi-coding-agent.d.ts` | Local type declarations for the Pi API |
 | `SPEC.md` | Requirements, acceptance criteria, and testing strategy |
 
@@ -120,7 +123,50 @@ npm run test:live
 
 # Live Pi startup test: proves the automatic reminder fires without a command
 npm run test:startup
+
+# Regenerate every test/test_N.json result file + test/summary.json
+npm run test:report
 ```
+
+## Test result files (`test/`)
+
+Every test case is written to its own numbered JSON file so the result is easy
+to inspect. Regenerate them with `npm run test:report`:
+
+```bash
+cd extension
+npm run test:report          # all cases, including live Pi
+npm run test:report -- --no-live   # skip spawning Pi (fast)
+```
+
+This produces `test/test_1.json` … `test/test_21.json` plus `test/summary.json`.
+Each numbered file records the case name, category, input, expected value,
+actual value, and pass/fail:
+
+```json
+// test/test_10.json
+{
+  "id": 10,
+  "name": "Repeat same day is silent (no popup, no notify)",
+  "category": "ui",
+  "input": { "first": "02:30", "repeat": "02:35" },
+  "expected": { "repeatPopup": false, "repeatNotifications": 0 },
+  "actual": { "repeatPopup": false, "repeatNotifications": 0 },
+  "pass": true
+}
+```
+
+The files are grouped by category:
+
+| Files | Category | What they cover |
+|---|---|---|
+| `test_1` – `test_7` | `policy` | 23:59, 00:00, 05:59, 06:00, dedup, next day, daytime sweep |
+| `test_8` – `test_11` | `ui` | first trigger yes/no, silent repeat, daytime silent |
+| `test_12` – `test_13` | `automatic` | `PIREMINDER_NOW` override |
+| `test_14` – `test_19` | `live-rpc` | real Pi process driven over RPC |
+| `test_20` – `test_21` | `live-boot` | real Pi startup with a fake clock |
+
+`test/summary.json` lists the totals and every case with a link to its file.
 
 ## Test it yourself (no need to wait until midnight)
 
@@ -250,7 +296,7 @@ every unit-test path injects a time.
 
 | # | Case | Expected | Verified by | Result |
 |---|---|---|---|---|
-| 1 | Extension loads in real Pi | starts cleanly | live `pi -p` run | ✅ |
+| 1 | Extension loads in real Pi | starts cleanly | live `pi -p` run + `test_20`/`test_21` | ✅ |
 | 2 | `reminder-check` command registered | present in `get_commands` | live RPC | ✅ |
 | 3 | **Automatic** reminder at startup | popup fires with no command | live startup test (`PIREMINDER_NOW=02:30`) | ✅ |
 | 3 | First trigger at 00:00 | notification + yes/no popup | live RPC + Jest + `test.json` | ✅ |

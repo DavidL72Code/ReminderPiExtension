@@ -1,0 +1,18 @@
+{
+  "id": 10,
+  "name": "Repeat same day is silent (no popup, no notify)",
+  "category": "ui",
+  "input": {
+    "first": "02:30",
+    "repeat": "02:35"
+  },
+  "expected": {
+    "repeatPopup": false,
+    "repeatNotifications": 0
+  },
+  "actual": {
+    "repeatPopup": false,
+    "repeatNotifications": 0
+  },
+  "pass": true
+}

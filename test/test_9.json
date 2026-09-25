@@ -1,0 +1,27 @@
+{
+  "id": 9,
+  "name": "First trigger at 05:59, answer NO",
+  "category": "ui",
+  "input": {
+    "now": "05:59",
+    "answer": "no"
+  },
+  "expected": {
+    "popup": true,
+    "notifications": 2
+  },
+  "actual": {
+    "popup": true,
+    "notifications": [
+      "It's late — take a break and continue again in the morning.",
+      "Understood — you won't be reminded again today."
+    ]
+  },
+  "pass": true,
+  "details": {
+    "popup": {
+      "title": "Time for a Break",
+      "message": "It's late — take a break and continue again in the morning. Do you acknowledge this advice?"
+    }
+  }
+}

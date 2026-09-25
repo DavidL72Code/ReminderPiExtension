@@ -1,0 +1,14 @@
+{
+  "id": 17,
+  "name": "Live Pi: daytime 14:00 is silent",
+  "category": "live-rpc",
+  "input": {
+    "command": "/reminder-check 14:00 reset"
+  },
+  "expected": "silent",
+  "actual": {
+    "dialogs": 0,
+    "notifications": []
+  },
+  "pass": true
+}

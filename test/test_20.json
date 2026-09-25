@@ -1,0 +1,11 @@
+{
+  "id": 20,
+  "name": "Live Pi startup: PIREMINDER_NOW=02:30 reminds",
+  "category": "live-boot",
+  "input": {
+    "PIREMINDER_NOW": "02:30"
+  },
+  "expected": "reminder",
+  "actual": "reminder",
+  "pass": true
+}

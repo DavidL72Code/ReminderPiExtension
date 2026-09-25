@@ -1,0 +1,12 @@
+{
+  "id": 3,
+  "name": "05:59 reminds (inside window)",
+  "category": "policy",
+  "input": {
+    "now": "2025-01-01T10:59:00.000Z",
+    "localTime": "05:59"
+  },
+  "expected": true,
+  "actual": true,
+  "pass": true
+}

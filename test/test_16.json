@@ -1,0 +1,14 @@
+{
+  "id": 16,
+  "name": "Live Pi: repeat same day is silent",
+  "category": "live-rpc",
+  "input": {
+    "command": "/reminder-check 02:35"
+  },
+  "expected": "silent",
+  "actual": {
+    "dialogs": 0,
+    "notifications": []
+  },
+  "pass": true
+}

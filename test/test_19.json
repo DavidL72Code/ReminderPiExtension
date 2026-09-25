@@ -1,0 +1,16 @@
+{
+  "id": 19,
+  "name": "Live Pi: invalid format 'abc' warns",
+  "category": "live-rpc",
+  "input": {
+    "command": "/reminder-check abc reset"
+  },
+  "expected": "warning",
+  "actual": {
+    "dialogs": 0,
+    "notifications": [
+      "Usage: /reminder-check HH:MM [reset] (e.g. /reminder-check 02:30)"
+    ]
+  },
+  "pass": true
+}

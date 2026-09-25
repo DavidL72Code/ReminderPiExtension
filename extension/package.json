@@ -6,6 +6,7 @@
     "test": "jest --no-coverage",
     "test:live": "node live-rpc-test.js",
     "test:startup": "node live-startup-test.js",
+    "test:report": "jiti write-test-files.ts",
     "generate-log": "jiti generate-log-cli.ts",
     "build": "tsc"
   },

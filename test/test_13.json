@@ -1,0 +1,15 @@
+{
+  "id": 13,
+  "name": "PIREMINDER_NOW=14:00 stays silent",
+  "category": "automatic",
+  "input": {
+    "PIREMINDER_NOW": "14:00"
+  },
+  "expected": {
+    "popup": false
+  },
+  "actual": {
+    "popup": false
+  },
+  "pass": true
+}

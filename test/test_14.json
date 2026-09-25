@@ -1,0 +1,9 @@
+{
+  "id": 14,
+  "name": "Live Pi: reminder-check command registered",
+  "category": "live-rpc",
+  "input": "get_commands",
+  "expected": true,
+  "actual": true,
+  "pass": true
+}

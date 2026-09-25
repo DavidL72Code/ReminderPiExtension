@@ -1,0 +1,15 @@
+{
+  "id": 12,
+  "name": "PIREMINDER_NOW=02:30 fires the automatic reminder",
+  "category": "automatic",
+  "input": {
+    "PIREMINDER_NOW": "02:30"
+  },
+  "expected": {
+    "popup": true
+  },
+  "actual": {
+    "popup": true
+  },
+  "pass": true
+}
