@@ -1,0 +1,11 @@
+# Node
+node_modules/
+dist/
+coverage/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
