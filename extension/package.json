@@ -4,15 +4,20 @@
   "description": "Pi extension: late-night break reminder (00:00-05:59, once per day)",
   "scripts": {
     "test": "jest --no-coverage",
+    "generate-log": "jiti generate-log-cli.ts",
     "build": "tsc"
   },
-  "keywords": ["pi-extension", "reminder"],
+  "keywords": [
+    "pi-extension",
+    "reminder"
+  ],
   "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
     "jest": "^30.5.2",
+    "jiti": "^2.7.0",
     "ts-jest": "^29.4.14",
     "typescript": "^5.9.3"
   }

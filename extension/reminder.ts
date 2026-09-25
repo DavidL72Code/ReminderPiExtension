@@ -148,3 +148,8 @@ export function resetState(): void {
 		timer = null;
 	}
 }
+
+/** Inspect the dedup state: the date string last reminded, or null. */
+export function getRemindedDate(): string | null {
+	return remindedDate;
+}

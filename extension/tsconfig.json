@@ -5,7 +5,11 @@
 		"strict": false,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"outDir": "./dist"
+		"outDir": "./dist",
+		"baseUrl": ".",
+		"paths": {
+			"@earendil-works/pi-coding-agent": ["./types/pi-coding-agent.d.ts"]
+		}
 	},
-	"include": ["*.ts"]
+	"include": ["*.ts", "types/**/*.d.ts"]
 }

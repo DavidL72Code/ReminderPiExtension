@@ -22,6 +22,9 @@ per day** to take a break and continue again in the morning:
 | `test_reminder.py` | Python unit tests (simulated time) |
 | `extension/reminder.ts` | Pi TypeScript extension (policy + UI + lifecycle) |
 | `extension/reminder.test.ts` | Jest tests (policy, UI flow, factory wiring) |
+| `extension/generate-test-log.ts` | Builds a machine-readable audit log |
+| `extension/generate-log-cli.ts` | CLI that writes `test.json` |
+| `extension/test.json` | Simulated-time audit log of every interaction |
 | `SPEC.md` | Requirements, acceptance criteria, and testing strategy |
 
 ## Run the tests
@@ -33,6 +36,28 @@ python3 -m unittest test_reminder -v
 # TypeScript extension tests
 cd extension && npm install && npm test
 ```
+
+## Audit log (`extension/test.json`)
+
+`test.json` records, for every simulated check: the simulated time, whether it
+is in the window, whether the day was already reminded, the outcome
+(`popup+notify` or `silent`), the notifications, the yes/no popup, and the
+user's answer.
+
+Regenerate it with:
+
+```bash
+cd extension && npm run generate-log
+```
+
+It answers the key behavior questions directly:
+
+| Question | Field in `test.json` | Value |
+|---|---|---|
+| Does it notify on the first trigger? | `scenarios[].checks[].outcome` | `popup+notify` |
+| Is there a yes/no acknowledgment? | `scenarios[].checks[].popup.answer` | `yes` / `no` |
+| Does it re-notify after being reminded? | `checks[].alreadyRemindedToday` + `outcome` | `true` + `silent` |
+| Any daytime reminders? | scenario "No reminders from 06:00 to 23:59" | all `silent` |
 
 ## How time is simulated
 
