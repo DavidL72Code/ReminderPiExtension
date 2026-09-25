@@ -109,13 +109,19 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Test/demo command: simulate any time against the REAL Pi UI.
-	// Usage: /reminder-check 02:30
+	// Usage: /reminder-check 02:30          (respects today's dedup)
+	//        /reminder-check 02:30 reset    (clears dedup first)
 	pi.registerCommand("reminder-check", {
-		description: "Simulate a reminder check at HH:MM (e.g. /reminder-check 02:30)",
+		description:
+			"Simulate a reminder check at HH:MM (add 'reset' to clear dedup)",
 		handler: async (args, ctx) => {
-			const match = (args || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+			const parts = (args || "").trim().split(/\s+/);
+			const match = (parts[0] || "").match(/^(\d{1,2}):(\d{2})$/);
 			if (!match) {
-				ctx.ui.notify("Usage: /reminder-check HH:MM (e.g. /reminder-check 02:30)", "warning");
+				ctx.ui.notify(
+					"Usage: /reminder-check HH:MM [reset] (e.g. /reminder-check 02:30)",
+					"warning",
+				);
 				return;
 			}
 			const hour = Number(match[1]);
@@ -126,8 +132,10 @@ export default function (pi: ExtensionAPI) {
 			}
 			const simulated = new Date();
 			simulated.setHours(hour, minute, 0, 0);
-			// Clear today's dedup state so the command can demonstrate repeatedly.
-			remindedDate = null;
+			// Optional reset so the demo can be repeated in one session.
+			if (parts.includes("reset")) {
+				remindedDate = null;
+			}
 			await checkAndNotify(ctx, simulated);
 		},
 	});

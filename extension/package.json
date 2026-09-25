@@ -4,6 +4,7 @@
   "description": "Pi extension: late-night break reminder (00:00-05:59, once per day)",
   "scripts": {
     "test": "jest --no-coverage",
+    "test:live": "node live-rpc-test.js",
     "generate-log": "jiti generate-log-cli.ts",
     "build": "tsc"
   },
