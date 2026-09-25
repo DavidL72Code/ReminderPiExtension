@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-09-25T20:40:17.177Z",
-  "systemTime": "Fri Sep 25 2026 16:40:17 GMT-0400 (Eastern Daylight Time)",
+  "generatedAt": "2026-09-25T20:47:54.042Z",
+  "systemTime": "Fri Sep 25 2026 16:47:54 GMT-0400 (Eastern Daylight Time)",
   "pi": {
     "provider": "openrouter",
     "model": "deepseek/deepseek-v4.1-flash",
     "sessionId": "01a0da27-2df9-77c9-9b3e-cf9babb67296"
   },
   "totals": {
-    "cases": 21,
-    "passed": 21,
+    "cases": 23,
+    "passed": 23,
     "failed": 0
   },
   "cases": [
@@ -135,6 +135,18 @@
     {
       "file": "test_21.json",
       "name": "Live Pi startup: PIREMINDER_NOW=06:00 stays silent",
+      "category": "live-boot",
+      "pass": true
+    },
+    {
+      "file": "test_22.json",
+      "name": "Live Pi: session 1 on a night reminds (writes state)",
+      "category": "live-boot",
+      "pass": true
+    },
+    {
+      "file": "test_23.json",
+      "name": "Live Pi: session 2 same night is silent (persistent dedup)",
       "category": "live-boot",
       "pass": true
     }

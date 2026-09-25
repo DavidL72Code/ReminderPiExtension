@@ -67,7 +67,7 @@ readline.createInterface({ input: child.stdout }).on("line", (line) => {
 		console.log("→ answering: confirmed=true");
 		answered = true;
 		send({ type: "extension_ui_response", id: msg.id, confirmed: true });
-		setTimeout(finish, 600);
+		setTimeout(finish, 3000);
 	}
 });
 

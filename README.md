@@ -56,8 +56,23 @@ Step by step:
 6. **Every later check that day** — silent. No notification, no popup.
 7. **Next calendar day** — the dedup resets at midnight and the window reminds
    again.
-8. **Session ends** — `session_shutdown` clears the interval timer and resets
-   state (idempotent cleanup).
+8. **Session ends** — `session_shutdown` clears the interval timer. The
+   reminded date stays on disk, so closing and reopening Pi the same night does
+   **not** prompt again.
+
+### Persistence across sessions
+
+The once-per-day rule is stored in a small state file, so it survives closing
+Pi and starting a new session:
+
+- **Default path**: `~/.pi/agent/pireminder-state.json`
+- **Override**: set `PIREMINDER_STATE=/path/to/file.json`
+- The date is written **before** the popup is shown, so dedup still holds even
+  if a dialog is slow or never answered.
+- `/reminder-check HH:MM reset` clears both the in-memory and persisted state.
+
+So: if you were reminded at 02:30, quit Pi, and reopen a new session at 02:45
+the same night, it stays **silent**. The next calendar day it reminds again.
 
 ## Behavior rules
 
@@ -112,7 +127,7 @@ inject any time. Testing happened in four layers:
 # Python policy tests
 python3 -m unittest test_reminder -v
 
-# TypeScript unit tests + audit-log tests (22 tests)
+# TypeScript unit tests + audit-log tests (26 tests)
 cd extension && npm install && npm test
 
 # Regenerate the audit log
@@ -139,7 +154,7 @@ npm run test:report          # all cases, including live Pi
 npm run test:report -- --no-live   # skip spawning Pi (fast)
 ```
 
-This produces `test/test_1.json` … `test/test_21.json` plus `test/summary.json`.
+This produces `test/test_1.json` … `test/test_23.json` plus `test/summary.json`.
 Each numbered file records the case name, category, input, expected value,
 actual value, and pass/fail:
 
@@ -164,7 +179,11 @@ The files are grouped by category:
 | `test_8` – `test_11` | `ui` | first trigger yes/no, silent repeat, daytime silent |
 | `test_12` – `test_13` | `automatic` | `PIREMINDER_NOW` override |
 | `test_14` – `test_19` | `live-rpc` | real Pi process driven over RPC |
-| `test_20` – `test_21` | `live-boot` | real Pi startup with a fake clock |
+| `test_20` – `test_23` | `live-boot` | real Pi startup, including **cross-session persistence** |
+
+`test_22` and `test_23` start **two separate Pi processes** sharing one state
+file: the first reminds, the second stays silent — proving the once-per-day rule
+survives closing and reopening Pi.
 
 `test/summary.json` lists the totals and every case with a link to its file.
 
@@ -305,6 +324,7 @@ every unit-test path injects a time.
 | 6 | Answer **no** | neutral reply, no repeats | `test.json`, Jest | ✅ |
 | 7 | Repeat same day | silent | live RPC + Jest + `test.json` | ✅ |
 | 8 | Next calendar day | reminds again | `test.json`, Jest | ✅ |
+| 9 | **New Pi session same night** | silent (persisted dedup) | live `test_22`/`test_23` (two real Pi processes) | ✅ |
 
 ## Failure cases (negative tests)
 

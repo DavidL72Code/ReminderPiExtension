@@ -12,7 +12,14 @@ import reminder, {
 	checkAndNotify,
 	setClock,
 	NOW_OVERRIDE_ENV,
+	STATE_ENV,
+	loadState,
+	persistState,
+	clearPersistedState,
 } from "./reminder";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -191,6 +198,72 @@ describe("isInWindow", () => {
 });
 
 // ---------------------------------------------------------------------------
+// persistence — survives closing and reopening Pi
+// ---------------------------------------------------------------------------
+
+describe("persistent dedup across sessions", () => {
+	let stateFile: string;
+
+	beforeEach(() => {
+		stateFile = path.join(
+			os.tmpdir(),
+			`pireminder-test-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+		);
+		process.env[STATE_ENV] = stateFile;
+		resetState();
+	});
+
+	afterEach(() => {
+		clearPersistedState();
+		delete process.env[STATE_ENV];
+		resetState();
+		setClock();
+	});
+
+	it("persistState writes the reminded date to disk", () => {
+		shouldRemind(atTime(2, 0)); // marks today
+		persistState();
+		const saved = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+		expect(saved.lastRemindedDate).toBe(atTime(2, 0).toDateString());
+	});
+
+	it("loadState restores the date so a new session does not re-remind", async () => {
+		// Session 1: remind and persist.
+		shouldRemind(atTime(2, 0));
+		persistState();
+
+		// Simulate a brand-new Pi session: in-memory state is gone.
+		resetState();
+		expect(shouldRemind(atTime(2, 5))).toBe(true); // fresh process would remind
+
+		// Now start the "new session": load from disk and check.
+		resetState();
+		loadState();
+		const ctx = mockCtx();
+		await checkAndNotify(ctx, atTime(2, 5));
+		expect(ctx.ui.confirm).not.toHaveBeenCalled(); // silent
+	});
+
+	it("a stale (yesterday) persisted date still reminds today", async () => {
+		fs.writeFileSync(
+			stateFile,
+			JSON.stringify({ lastRemindedDate: "Tue Jan 01 2002" }),
+		);
+		loadState();
+		const ctx = mockCtx();
+		await checkAndNotify(ctx, atTime(2, 0));
+		expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+	});
+
+	it("clearPersistedState removes the file", () => {
+		persistState();
+		expect(fs.existsSync(stateFile)).toBe(true);
+		clearPersistedState();
+		expect(fs.existsSync(stateFile)).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // factory registration — Pi lifecycle wiring
 // ---------------------------------------------------------------------------
 
@@ -231,6 +304,14 @@ describe("extension factory", () => {
 			resetState();
 			setClock(() => atTime(2, 30)); // simulate 02:30
 
+			// Isolate persistence to a temp file so the test writes nothing real.
+			const stateFile = path.join(
+				os.tmpdir(),
+				`pireminder-handler-${Date.now()}.json`,
+			);
+			process.env[STATE_ENV] = stateFile;
+			clearPersistedState();
+
 			const ctx = mockCtx();
 			// Emit exactly as Pi does: (event, ctx). The ctx must be second.
 			await handlers["session_start"](
@@ -239,8 +320,10 @@ describe("extension factory", () => {
 			);
 			expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
 
-			// Cleanup the interval the handler registered.
+			// Cleanup the interval the handler registered and the temp state.
 			resetState();
+			clearPersistedState();
+			delete process.env[STATE_ENV];
 		} finally {
 			setClock();
 			jest.useRealTimers();

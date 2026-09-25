@@ -11,6 +11,9 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 /** Reminder window: 00:00 (inclusive) to 06:00 (exclusive). */
 const WINDOW_END_MINUTES = 6 * 60; // 360 minutes
@@ -54,6 +57,56 @@ let getNow: () => Date = resolveNow;
 
 const REMINDER_MESSAGE =
 	"It's late — take a break and continue again in the morning.";
+
+/**
+ * Env var to override the persistent state file path (used by tests/tools).
+ * Defaults to ~/.pi/agent/pireminder-state.json so the once-per-day rule
+ * survives closing and reopening Pi.
+ */
+export const STATE_ENV = "PIREMINDER_STATE";
+
+function statePath(): string {
+	return (
+		process.env[STATE_ENV] ||
+		path.join(os.homedir(), ".pi", "agent", "pireminder-state.json")
+	);
+}
+
+/** Load the last-reminded date from disk (if any). */
+export function loadState(): void {
+	try {
+		const raw = fs.readFileSync(statePath(), "utf8");
+		const data = JSON.parse(raw);
+		if (typeof data?.lastRemindedDate === "string") {
+			remindedDate = data.lastRemindedDate;
+		}
+	} catch {
+		// No state file yet, or unreadable — treat as never reminded.
+	}
+}
+
+/** Persist the current last-reminded date to disk (best effort). */
+export function persistState(): void {
+	try {
+		const p = statePath();
+		fs.mkdirSync(path.dirname(p), { recursive: true });
+		fs.writeFileSync(
+			p,
+			JSON.stringify({ lastRemindedDate: remindedDate }, null, 2) + "\n",
+		);
+	} catch {
+		// Best effort — a failed write must not break the session.
+	}
+}
+
+/** Delete the persisted state (used by tests and /reminder-check reset). */
+export function clearPersistedState(): void {
+	try {
+		fs.rmSync(statePath(), { force: true });
+	} catch {
+		// Ignore.
+	}
+}
 
 /**
  * Determine whether the current time falls inside the reminder window.
@@ -100,7 +153,16 @@ export async function checkAndNotify(
 ): Promise<void> {
 	const time = now ?? getNow();
 	if (!shouldRemind(time)) return;
+	await showReminder(ctx);
+}
 
+/** Show the notification and yes/no acknowledgment dialog. */
+async function showReminder(ctx: {
+	ui: {
+		notify(message: string, type: string): void;
+		confirm(title: string, message: string): Promise<boolean>;
+	};
+}): Promise<void> {
 	// First (and only) reminder for today: pop up the acknowledgment dialog.
 	ctx.ui.notify(REMINDER_MESSAGE, "info");
 	const acknowledged = await ctx.ui.confirm(
@@ -116,14 +178,36 @@ export async function checkAndNotify(
 	}
 }
 
+/**
+ * Like checkAndNotify, but persists the reminded date so a new session on the
+ * same night does not prompt again. Used by the real session/timer/command
+ * paths; unit tests call checkAndNotify directly and never touch disk.
+ *
+ * The date is persisted BEFORE the dialog is shown: the reminder has already
+ * been decided and delivered at that point, so dedup stays robust even if the
+ * dialog is slow or never answered (e.g. some non-interactive modes).
+ */
+async function checkAndPersist(
+	ctx: Parameters<typeof checkAndNotify>[0],
+	now?: Date,
+): Promise<void> {
+	const time = now ?? getNow();
+	if (!shouldRemind(time)) return;
+	persistState();
+	await showReminder(ctx);
+}
+
 export default function (pi: ExtensionAPI) {
 	// Start periodic checks when a session begins.
 	// Per Pi lifecycle rules, timers must not be started in the factory.
 	// NOTE: Pi event handlers receive (event, ctx) — the context is the
 	// SECOND argument. Taking only one parameter would capture the event.
 	pi.on("session_start", async (_event, ctx) => {
-		await checkAndNotify(ctx);
-		timer = setInterval(() => checkAndNotify(ctx), CHECK_INTERVAL_MS);
+		// Load any persisted reminder state first, so a new session on the same
+		// night honors the once-per-day rule instead of prompting again.
+		loadState();
+		await checkAndPersist(ctx);
+		timer = setInterval(() => checkAndPersist(ctx), CHECK_INTERVAL_MS);
 	});
 
 	// Clean up the timer when the session ends.
@@ -162,8 +246,9 @@ export default function (pi: ExtensionAPI) {
 			// Optional reset so the demo can be repeated in one session.
 			if (parts.includes("reset")) {
 				remindedDate = null;
+				clearPersistedState();
 			}
-			await checkAndNotify(ctx, simulated);
+			await checkAndPersist(ctx, simulated);
 		},
 	});
 }

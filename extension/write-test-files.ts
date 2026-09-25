@@ -17,6 +17,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { spawn } from "child_process";
 import * as readline from "readline";
 import {
@@ -299,7 +300,10 @@ async function liveRpcCases(): Promise<void> {
 
 	await wait(900);
 	send({ type: "get_commands" });
-	await wait(600);
+	// Wait until the response arrives (up to 5s) rather than a fixed delay.
+	for (let i = 0; i < 50 && commandRegistered === null; i++) {
+		await wait(100);
+	}
 	record({
 		name: "Live Pi: reminder-check command registered",
 		category: "live-rpc",
@@ -359,10 +363,17 @@ async function liveRpcCases(): Promise<void> {
 // 5. Live Pi startup with a fake clock
 // ---------------------------------------------------------------------------
 
-function liveBootCase(fakeTime: string, expectReminder: boolean): Promise<void> {
+function liveBootCase(
+	fakeTime: string,
+	expectReminder: boolean,
+	opts: { statePath?: string; sessionSuffix?: string; name?: string } = {},
+): Promise<void> {
 	return new Promise((resolve) => {
 		let reminded = false;
 		let done = false;
+		const suffix = (opts.sessionSuffix ?? fakeTime).replace(/[:]/g, "");
+		const env: Record<string, string> = { ...process.env, PIREMINDER_NOW: fakeTime } as Record<string, string>;
+		if (opts.statePath) env.PIREMINDER_STATE = opts.statePath;
 		const child = spawn(
 			PI_BIN,
 			[
@@ -374,19 +385,22 @@ function liveBootCase(fakeTime: string, expectReminder: boolean): Promise<void> 
 				EXTENSION,
 				"--offline",
 				"--session-dir",
-				path.join(require("os").tmpdir(), "pireminder-report-" + fakeTime.replace(":", "")),
+				path.join(os.tmpdir(), "pireminder-report-" + suffix),
 			],
-			{ stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, PIREMINDER_NOW: fakeTime } },
+			{ stdio: ["pipe", "pipe", "pipe"], env },
 		);
 		const finish = () => {
 			if (done) return;
 			done = true;
 			record({
-				name: `Live Pi startup: PIREMINDER_NOW=${fakeTime} ${
-					expectReminder ? "reminds" : "stays silent"
-				}`,
+				name:
+					opts.name ??
+					`Live Pi startup: PIREMINDER_NOW=${fakeTime} ${
+						expectReminder ? "reminds" : "stays silent"
+					}`,
 				category: "live-boot",
-				input: { PIREMINDER_NOW: fakeTime },
+				input: { PIREMINDER_NOW: fakeTime,
+					...(opts.statePath ? { sharedStateFile: true } : {}) },
 				expected: expectReminder ? "reminder" : "silent",
 				actual: reminded ? "reminder" : "silent",
 				pass: reminded === expectReminder,
@@ -437,12 +451,35 @@ async function main() {
 				pass: false,
 			});
 		}
-		await liveBootCase("02:30", true);
-		await liveBootCase("06:00", false);
+		await liveBootCase("02:30", true, { sessionSuffix: "a" });
+		await liveBootCase("06:00", false, { sessionSuffix: "b" });
+
+		// Cross-session persistence: two separate Pi processes sharing one
+		// state file. The first reminds; the second stays silent.
+		const sharedState = path.join(os.tmpdir(), `pireminder-persist-${Date.now()}.json`);
+		try {
+			fs.rmSync(sharedState, { force: true });
+			await liveBootCase("02:30", true, {
+				statePath: sharedState,
+				sessionSuffix: "persist-1",
+				name: "Live Pi: session 1 on a night reminds (writes state)",
+			});
+			await liveBootCase("02:30", false, {
+				statePath: sharedState,
+				sessionSuffix: "persist-2",
+				name: "Live Pi: session 2 same night is silent (persistent dedup)",
+			});
+		} finally {
+			fs.rmSync(sharedState, { force: true });
+		}
 	}
 
 	// Write numbered files
 	fs.mkdirSync(OUT_DIR, { recursive: true });
+	// Remove stale test_N.json files from previous runs.
+	for (const f of fs.readdirSync(OUT_DIR)) {
+		if (/^test_\d+\.json$/.test(f)) fs.rmSync(path.join(OUT_DIR, f), { force: true });
+	}
 	results.forEach((r, i) => {
 		const file = { id: i + 1, ...r };
 		fs.writeFileSync(

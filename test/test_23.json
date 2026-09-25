@@ -1,0 +1,12 @@
+{
+  "id": 23,
+  "name": "Live Pi: session 2 same night is silent (persistent dedup)",
+  "category": "live-boot",
+  "input": {
+    "PIREMINDER_NOW": "02:30",
+    "sharedStateFile": true
+  },
+  "expected": "silent",
+  "actual": "silent",
+  "pass": true
+}
