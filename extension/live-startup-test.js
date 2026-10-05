@@ -17,10 +17,20 @@
 const { spawn } = require("child_process");
 const readline = require("readline");
 const path = require("path");
+const os = require("os");
+const fs = require("fs");
 
 const PI_BIN = process.env.PI_BIN || "/Users/davidle/.pi/agent/bin/pi";
 const EXTENSION = path.join(__dirname, "reminder.ts");
 const FAKE_TIME = process.env.PIREMINDER_NOW || "02:30";
+// Isolate persistence so the test is repeatable on the same day and never
+// touches the real user state file.
+const STATE_FILE = path.join(os.tmpdir(), `pireminder-startup-${process.pid}.json`);
+try {
+	fs.rmSync(STATE_FILE, { force: true });
+} catch {
+	// Ignore.
+}
 
 const captured = { notifications: [], dialogs: [] };
 let answered = false;
@@ -37,11 +47,15 @@ const child = spawn(
 		"--offline",
 		// NOTE: session_start does not fire with --no-session, so use a temp dir.
 		"--session-dir",
-		require("os").tmpdir() + "/pireminder-startup-test",
+		os.tmpdir() + "/pireminder-startup-test",
 	],
 	{
 		stdio: ["pipe", "pipe", "pipe"],
-		env: { ...process.env, PIREMINDER_NOW: FAKE_TIME },
+		env: {
+			...process.env,
+			PIREMINDER_NOW: FAKE_TIME,
+			PIREMINDER_STATE: STATE_FILE,
+		},
 	},
 );
 
@@ -93,6 +107,11 @@ function finish() {
 		),
 	);
 	child.kill("SIGTERM");
+	try {
+		fs.rmSync(STATE_FILE, { force: true });
+	} catch {
+		// Ignore cleanup failures.
+	}
 	process.exit(pass ? 0 : 1);
 }
 

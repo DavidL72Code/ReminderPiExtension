@@ -287,7 +287,7 @@ async function liveRpcCases(): Promise<void> {
 		}
 		if (msg.type === "response" && msg.command === "get_commands") {
 			const names = (msg.data?.commands || []).map((c: any) => c.name);
-			commandRegistered = names.includes("reminder-check");
+			commandRegistered = names.includes("bedtime-test");
 		} else if (msg.type === "extension_ui_request") {
 			if (msg.method === "notify") notifications.push(msg.message);
 			else if (msg.method === "confirm") {
@@ -305,7 +305,7 @@ async function liveRpcCases(): Promise<void> {
 		await wait(100);
 	}
 	record({
-		name: "Live Pi: reminder-check command registered",
+		name: "Live Pi: bedtime-test command registered",
 		category: "live-rpc",
 		input: "get_commands",
 		expected: true,
@@ -336,23 +336,23 @@ async function liveRpcCases(): Promise<void> {
 
 	await liveCase(
 		"Live Pi: first trigger (reset) shows popup + notify",
-		"/reminder-check 02:30 reset",
+		"/bedtime-test 02:30 reset",
 		"popup",
 	);
-	await liveCase("Live Pi: repeat same day is silent", "/reminder-check 02:35", "silent");
+	await liveCase("Live Pi: repeat same day is silent", "/bedtime-test 02:35", "silent");
 	await liveCase(
 		"Live Pi: daytime 14:00 is silent",
-		"/reminder-check 14:00 reset",
+		"/bedtime-test 14:00 reset",
 		"silent",
 	);
 	await liveCase(
 		"Live Pi: invalid hour 25:00 warns",
-		"/reminder-check 25:00 reset",
+		"/bedtime-test 25:00 reset",
 		"warning",
 	);
 	await liveCase(
 		"Live Pi: invalid format 'abc' warns",
-		"/reminder-check abc reset",
+		"/bedtime-test abc reset",
 		"warning",
 	);
 
@@ -451,8 +451,19 @@ async function main() {
 				pass: false,
 			});
 		}
-		await liveBootCase("02:30", true, { sessionSuffix: "a" });
-		await liveBootCase("06:00", false, { sessionSuffix: "b" });
+		// Standalone boot cases use isolated state so a prior run's dedup does
+		// not make the 02:30 reminder silent.
+		const bootA = path.join(os.tmpdir(), `pireminder-boot-a-${Date.now()}.json`);
+		const bootB = path.join(os.tmpdir(), `pireminder-boot-b-${Date.now()}.json`);
+		try {
+			fs.rmSync(bootA, { force: true });
+			fs.rmSync(bootB, { force: true });
+			await liveBootCase("02:30", true, { sessionSuffix: "a", statePath: bootA });
+			await liveBootCase("06:00", false, { sessionSuffix: "b", statePath: bootB });
+		} finally {
+			fs.rmSync(bootA, { force: true });
+			fs.rmSync(bootB, { force: true });
+		}
 
 		// Cross-session persistence: two separate Pi processes sharing one
 		// state file. The first reminds; the second stays silent.

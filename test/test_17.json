@@ -3,7 +3,7 @@
   "name": "Live Pi: daytime 14:00 is silent",
   "category": "live-rpc",
   "input": {
-    "command": "/reminder-check 14:00 reset"
+    "command": "/bedtime-test 14:00 reset"
   },
   "expected": "silent",
   "actual": {

@@ -3,7 +3,7 @@
   "name": "Live Pi: invalid hour 25:00 warns",
   "category": "live-rpc",
   "input": {
-    "command": "/reminder-check 25:00 reset"
+    "command": "/bedtime-test 25:00 reset"
   },
   "expected": "warning",
   "actual": {

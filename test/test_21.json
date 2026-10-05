@@ -3,7 +3,8 @@
   "name": "Live Pi startup: PIREMINDER_NOW=06:00 stays silent",
   "category": "live-boot",
   "input": {
-    "PIREMINDER_NOW": "06:00"
+    "PIREMINDER_NOW": "06:00",
+    "sharedStateFile": true
   },
   "expected": "silent",
   "actual": "silent",

@@ -16,6 +16,20 @@ import reminder, {
 	loadState,
 	persistState,
 	clearPersistedState,
+	isEnabled,
+	setEnabled,
+	getWindow,
+	getWindowLabel,
+	isDefaultWindow,
+	setWindow,
+	resetWindow,
+	getRemindedDate,
+	runSelfTest,
+	formatSelfTestReport,
+	groupSelfTestScenarios,
+	formatHelp,
+	DEFAULT_WINDOW_START_MINUTES,
+	DEFAULT_WINDOW_END_MINUTES,
 } from "./reminder";
 import * as fs from "fs";
 import * as os from "os";
@@ -268,7 +282,7 @@ describe("persistent dedup across sessions", () => {
 // ---------------------------------------------------------------------------
 
 describe("extension factory", () => {
-	it("registers session_start, session_shutdown, and reminder-check", () => {
+	it("registers session_start, session_shutdown, /bedtime-test", () => {
 		const events: string[] = [];
 		const commands: string[] = [];
 		const fakePi = {
@@ -285,7 +299,7 @@ describe("extension factory", () => {
 		factory(fakePi);
 
 		expect(events).toEqual(["session_start", "session_shutdown"]);
-		expect(commands).toEqual(["reminder-check"]);
+		expect(commands).toEqual(["bedtime-test"]);
 	});
 
 	it("session_start handler takes (event, ctx) so the automatic reminder fires", async () => {
@@ -328,5 +342,555 @@ describe("extension factory", () => {
 			setClock();
 			jest.useRealTimers();
 		}
+	});
+
+	it("session_shutdown clears the interval timer", async () => {
+		jest.useFakeTimers();
+		try {
+			const handlers: Record<string, (...args: any[]) => any> = {};
+			const fakePi = {
+				on: (event: string, handler: (...args: any[]) => any) => {
+					handlers[event] = handler;
+				},
+				registerCommand: () => {},
+				registerTool: () => {},
+			} as any;
+
+			reminder(fakePi);
+			resetState(); // ensure no timer from a previous test
+			setClock(() => atTime(2, 30));
+
+			const stateFile = path.join(
+				os.tmpdir(),
+				`pireminder-shutdown-${Date.now()}.json`,
+			);
+			process.env[STATE_ENV] = stateFile;
+			clearPersistedState();
+
+			const ctx = mockCtx();
+			await handlers["session_start"]({ type: "session_start" }, ctx);
+			expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+
+			await handlers["session_shutdown"]({ type: "session_shutdown" });
+
+			// If the timer were still alive, the next 5-minute tick would remind
+			// again (shutdown reset the in-memory dedup date to null).
+			jest.advanceTimersByTime(5 * 60 * 1000);
+			expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+
+			clearPersistedState();
+			delete process.env[STATE_ENV];
+		} finally {
+			resetState();
+			setClock();
+			jest.useRealTimers();
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// enable/disable toggle
+// ---------------------------------------------------------------------------
+
+describe("enable/disable", () => {
+	const stateFile = path.join(
+		os.tmpdir(),
+		`pireminder-enabled-${process.pid}.json`,
+	);
+
+	/** Register the factory and return its command handlers. */
+	function registeredCommands() {
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		const fakePi = {
+			on: () => {},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+		} as any;
+		reminder(fakePi);
+		return commands;
+	}
+
+	beforeEach(() => {
+		process.env[STATE_ENV] = stateFile;
+		clearPersistedState();
+		resetState();
+	});
+
+	afterEach(() => {
+		clearPersistedState();
+		resetState();
+		delete process.env[STATE_ENV];
+	});
+
+	it("defaults to enabled", () => {
+		expect(isEnabled()).toBe(true);
+	});
+
+	it("setEnabled(false) persists across loadState", () => {
+		setEnabled(false);
+		expect(isEnabled()).toBe(false);
+		resetState(); // memory back to default; disk still says off
+		expect(isEnabled()).toBe(true);
+		loadState();
+		expect(isEnabled()).toBe(false);
+	});
+
+	it("/bedtime-test off, status, and on toggle the reminder", async () => {
+		const commands = registeredCommands();
+
+		const off = mockCtx();
+		await commands["bedtime-test"]("off", off);
+		expect(isEnabled()).toBe(false);
+		expect(off.ui.notify).toHaveBeenCalledWith("Reminders disabled.", "info");
+
+		const status = mockCtx();
+		await commands["bedtime-test"]("status", status);
+		expect(status.ui.notify).toHaveBeenCalledWith(
+			"Reminders are currently off (window 00:00–06:00, default).",
+			"info",
+		);
+
+		const on = mockCtx();
+		await commands["bedtime-test"]("on", on);
+		expect(isEnabled()).toBe(true);
+		expect(on.ui.notify).toHaveBeenCalledWith("Reminders enabled.", "info");
+	});
+
+	it("automatic session_start stays silent while disabled", async () => {
+		jest.useFakeTimers();
+		try {
+			const handlers: Record<string, (...args: any[]) => any> = {};
+			const fakePi = {
+				on: (event: string, handler: (...args: any[]) => any) => {
+					handlers[event] = handler;
+				},
+				registerCommand: () => {},
+				registerTool: () => {},
+			} as any;
+			reminder(fakePi);
+
+			setClock(() => atTime(2, 30)); // inside the window
+			setEnabled(false); // persisted to the temp state file
+
+			const ctx = mockCtx();
+			await handlers["session_start"]({ type: "session_start" }, ctx);
+			expect(ctx.ui.confirm).not.toHaveBeenCalled();
+			expect(ctx.ui.notify).not.toHaveBeenCalled();
+		} finally {
+			resetState(); // clears the interval before restoring real timers
+			setClock();
+			jest.useRealTimers();
+		}
+	});
+
+	it("manual /bedtime-test HH:MM still works while disabled", async () => {
+		const commands = registeredCommands();
+		setEnabled(false);
+
+		const ctx = mockCtx();
+		await commands["bedtime-test"]("4:30", ctx);
+		expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// configurable reminder window (default + custom)
+// ---------------------------------------------------------------------------
+
+describe("reminder window", () => {
+	const stateFile = path.join(
+		os.tmpdir(),
+		`pireminder-window-${process.pid}.json`,
+	);
+
+	function registeredCommands() {
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		const fakePi = {
+			on: () => {},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+		} as any;
+		reminder(fakePi);
+		return commands;
+	}
+
+	beforeEach(() => {
+		process.env[STATE_ENV] = stateFile;
+		clearPersistedState();
+		resetState();
+	});
+
+	afterEach(() => {
+		clearPersistedState();
+		resetState();
+		delete process.env[STATE_ENV];
+	});
+
+	it("defaults to the original [00:00, 06:00) window", () => {
+		expect(isDefaultWindow()).toBe(true);
+		expect(getWindow()).toEqual({
+			start: DEFAULT_WINDOW_START_MINUTES,
+			end: DEFAULT_WINDOW_END_MINUTES,
+		});
+		expect(getWindowLabel()).toBe("00:00–06:00");
+	});
+
+	it("isInWindow uses a custom window", () => {
+		setWindow(1 * 60, 3 * 60); // 01:00–03:00
+		expect(isInWindow(atTime(2, 0))).toBe(true);
+		expect(isInWindow(atTime(4, 0))).toBe(false);
+	});
+
+	it("supports a custom window that wraps past midnight", () => {
+		setWindow(22 * 60, 6 * 60); // 22:00–06:00
+		expect(isInWindow(atTime(23, 0))).toBe(true);
+		expect(isInWindow(atTime(2, 0))).toBe(true);
+		expect(isInWindow(atTime(12, 0))).toBe(false);
+	});
+
+	it("fires once inside a custom window, then stays silent", async () => {
+		setWindow(1 * 60, 4 * 60); // 01:00–04:00
+		const first = mockCtx();
+		await checkAndNotify(first, atTime(2, 0));
+		expect(first.ui.confirm).toHaveBeenCalledTimes(1);
+
+		// Same day, later, still inside the custom window → silent.
+		const repeat = mockCtx();
+		await checkAndNotify(repeat, atTime(3, 0));
+		expect(repeat.ui.confirm).not.toHaveBeenCalled();
+		expect(repeat.ui.notify).not.toHaveBeenCalled();
+	});
+
+	it("stays silent outside a custom window, then reminds inside it", async () => {
+		setWindow(1 * 60, 4 * 60); // 01:00–04:00
+		const outside = mockCtx();
+		await checkAndNotify(outside, atTime(5, 0));
+		expect(outside.ui.confirm).not.toHaveBeenCalled();
+		expect(outside.ui.notify).not.toHaveBeenCalled();
+
+		// Entering the custom window still reminds.
+		const inside = mockCtx();
+		await checkAndNotify(inside, atTime(2, 0));
+		expect(inside.ui.confirm).toHaveBeenCalledTimes(1);
+	});
+
+	it("fires once inside a wrap-around custom window, then silent", async () => {
+		setWindow(22 * 60, 6 * 60); // 22:00–06:00
+		const first = mockCtx();
+		await checkAndNotify(first, atTime(23, 0));
+		expect(first.ui.confirm).toHaveBeenCalledTimes(1);
+
+		const repeat = mockCtx();
+		await checkAndNotify(repeat, atTime(2, 0));
+		expect(repeat.ui.confirm).not.toHaveBeenCalled();
+	});
+
+	it("a custom window set via /bedtime-test time drives the reminder flow", async () => {
+		const commands = registeredCommands();
+		await commands["bedtime-test"]("time 02:00 04:00", mockCtx());
+
+		const inside = mockCtx();
+		await checkAndNotify(inside, atTime(3, 0)); // inside 02:00–04:00
+		expect(inside.ui.confirm).toHaveBeenCalledTimes(1);
+
+		const evening = mockCtx();
+		await checkAndNotify(evening, atTime(20, 0)); // outside
+		expect(evening.ui.confirm).not.toHaveBeenCalled();
+	});
+
+	it("a custom window persists across loadState", () => {
+		setWindow(22 * 60, 6 * 60);
+		resetState(); // memory back to default; disk still custom
+		expect(isDefaultWindow()).toBe(true);
+		loadState();
+		expect(getWindow()).toEqual({ start: 22 * 60, end: 6 * 60 });
+	});
+
+	it("/bedtime-test time sets, reports, and resets the window", async () => {
+		const commands = registeredCommands();
+
+		const set = mockCtx();
+		await commands["bedtime-test"]("time 22:00 06:00", set);
+		expect(getWindow()).toEqual({ start: 22 * 60, end: 6 * 60 });
+		expect(set.ui.notify).toHaveBeenCalledWith(
+			"Reminder window set to 22:00–06:00.",
+			"info",
+		);
+
+		const show = mockCtx();
+		await commands["bedtime-test"]("time", show);
+		expect(show.ui.notify).toHaveBeenCalledWith(
+			"Reminder window: 22:00–06:00 (custom).",
+			"info",
+		);
+
+		const reset = mockCtx();
+		await commands["bedtime-test"]("time default", reset);
+		expect(isDefaultWindow()).toBe(true);
+		expect(reset.ui.notify).toHaveBeenCalledWith(
+			"Reminder window reset to default 00:00–06:00.",
+			"info",
+		);
+	});
+
+	it("/bedtime-test time warns on invalid or equal times", async () => {
+		const commands = registeredCommands();
+
+		const bad = mockCtx();
+		await commands["bedtime-test"]("time 9:00", bad);
+		expect(bad.ui.notify).toHaveBeenCalledWith(
+			"Usage: /bedtime-test time [default | HH:MM HH:MM] (e.g. /bedtime-test time 22:00 06:00)",
+			"warning",
+		);
+
+		const equal = mockCtx();
+		await commands["bedtime-test"]("time 03:00 03:00", equal);
+		expect(equal.ui.notify).toHaveBeenCalledWith(
+			"Start and end times must differ.",
+			"warning",
+		);
+	});
+
+	it("resetWindow is exported and restores defaults", () => {
+		setWindow(1, 2);
+		resetWindow();
+		expect(isDefaultWindow()).toBe(true);
+	});
+
+	it("/bedtime-test reset clears dedup but preserves on/off and window", async () => {
+		const commands = registeredCommands();
+		setEnabled(false);
+		setWindow(2 * 60, 5 * 60); // 02:00–05:00
+
+		// First check inside the custom window reminds and sets the dedup date.
+		await commands["bedtime-test"]("3:00", mockCtx());
+		// A second check without reset would be silent; reset lets it fire again.
+		const again = mockCtx();
+		await commands["bedtime-test"]("3:00 reset", again);
+		expect(again.ui.confirm).toHaveBeenCalledTimes(1);
+
+		// Only the dedup date was cleared; the other settings survived.
+		expect(isEnabled()).toBe(false);
+		expect(getWindow()).toEqual({ start: 2 * 60, end: 5 * 60 });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// /bedtime-test run_test — in-extension self-test
+// ---------------------------------------------------------------------------
+
+describe("run_test self-test", () => {
+	const stateFile = path.join(
+		os.tmpdir(),
+		`pireminder-selftest-${process.pid}.json`,
+	);
+
+	beforeEach(() => {
+		process.env[STATE_ENV] = stateFile;
+		clearPersistedState();
+		resetState();
+	});
+
+	afterEach(() => {
+		clearPersistedState();
+		resetState();
+		delete process.env[STATE_ENV];
+	});
+
+	it("passes every built-in check", () => {
+		const summary = runSelfTest();
+		expect(summary.failed).toBe(0);
+		expect(summary.passed).toBe(summary.total);
+		expect(summary.total).toBeGreaterThan(0);
+	});
+
+	it("records time, already-reminded, and outcome for each check", () => {
+		const summary = runSelfTest({ seed: 12345 });
+		const byName = (n: string) => summary.results.find((r) => r.name === n)!;
+
+		// Inclusive end boundary is fixed and reminds.
+		expect(byName("inclusive end")).toMatchObject({
+			time: "05:59",
+			command: "/bedtime-test 05:59 reset",
+			alreadyReminded: false,
+			reminded: true,
+			pass: true,
+		});
+
+		// First out-of-boundary check is the fixed 06:00 exclusive end.
+		expect(byName("outside 1")).toMatchObject({
+			time: "06:00",
+			alreadyReminded: false,
+			reminded: false,
+			pass: true,
+		});
+
+		// Second consecutive check is already reminded → no reminder.
+		expect(byName("second in-window")).toMatchObject({
+			alreadyReminded: true,
+			reminded: false,
+			pass: true,
+		});
+	});
+
+	it("is reproducible from a seed", () => {
+		const a = runSelfTest({ seed: 777 }).results.map((r) => r.command);
+		const b = runSelfTest({ seed: 777 }).results.map((r) => r.command);
+		expect(a).toEqual(b);
+	});
+
+	it("groups the two consecutive checks onto one row with both commands", () => {
+		const rows = groupSelfTestScenarios(runSelfTest());
+		const consecutive = rows.find((r) => r.scenario === "Consecutive (dedup)")!;
+		expect(consecutive.command).toMatch(
+			/^\/bedtime-test \d{2}:\d{2} reset; \/bedtime-test \d{2}:\d{2}$/,
+		);
+		expect(consecutive.output).toBe("reminder shown, no reminder");
+		expect(consecutive.expected).toBe("reminder shown, no reminder");
+		expect(consecutive.pass).toBe(true);
+	});
+
+	it("formats a labeled report per test situation", () => {
+		const text = formatSelfTestReport(runSelfTest()).join("\n");
+		expect(text).toContain("Test situation: Regular in-window");
+		expect(text).toContain("Command:");
+		expect(text).toContain("Output:");
+		expect(text).toContain("Expected:");
+		expect(text).toContain("Pass/Fail: PASS");
+		expect(text).toContain("/bedtime-test 05:59 reset");
+		expect(text).toMatch(/Seed: \d+/);
+	});
+
+	it("does not disturb the user's real state", async () => {
+		await checkAndNotify(mockCtx(), atTime(2, 0)); // set a dedup date
+		const before = getRemindedDate();
+		setEnabled(false);
+		setWindow(2 * 60, 5 * 60);
+
+		runSelfTest();
+
+		expect(getRemindedDate()).toBe(before);
+		expect(isEnabled()).toBe(false);
+		expect(getWindow()).toEqual({ start: 2 * 60, end: 5 * 60 });
+	});
+
+	it("/bedtime-test run_test reports a pass", async () => {
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		const fakePi = {
+			on: () => {},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+		} as any;
+		reminder(fakePi);
+
+		const ctx = mockCtx();
+		await commands["bedtime-test"]("run_test", ctx);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Self-test passed"),
+			"info",
+		);
+	});
+
+	it("/bedtime-test run_test writes the report to the transcript", async () => {
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		const sendMessage = jest.fn();
+		const fakePi = {
+			on: () => {},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+			sendMessage,
+		} as any;
+		reminder(fakePi);
+
+		const ctx = mockCtx();
+		await commands["bedtime-test"]("run_test", ctx);
+
+		expect(sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "bedtime-test-selftest",
+				display: true,
+				content: expect.stringContaining("Test situation: Regular in-window"),
+			}),
+		);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("Self-test passed"),
+			"info",
+		);
+	});
+
+	it("bare /bedtime-test shows the numbered command menu", async () => {
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		const sendMessage = jest.fn();
+		const fakePi = {
+			on: () => {},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+			sendMessage,
+		} as any;
+		reminder(fakePi);
+
+		const ctx = mockCtx();
+		await commands["bedtime-test"]("", ctx);
+
+		expect(sendMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				customType: "bedtime-test-help",
+				display: true,
+				content: expect.stringContaining("1. /bedtime-test HH:MM [reset]"),
+			}),
+		);
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("available commands"),
+			"info",
+		);
+	});
+
+	it("the menu lists every option with a description", () => {
+		const text = formatHelp().join("\n");
+		expect(text).toContain("1. /bedtime-test HH:MM [reset]");
+		expect(text).toContain("2. /bedtime-test on | off");
+		expect(text).toContain("3. /bedtime-test status");
+		expect(text).toContain("4. /bedtime-test time");
+		expect(text).toContain("5. /bedtime-test run_test");
+	});
+
+	it("/bedtime-test run_test falls back to a widget without sendMessage", async () => {
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		const fakePi = {
+			on: () => {},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+		} as any;
+		reminder(fakePi);
+
+		const setWidget = jest.fn();
+		const ctx = {
+			ui: { notify: jest.fn(), confirm: jest.fn().mockResolvedValue(true), setWidget },
+		} as any;
+		await commands["bedtime-test"]("run_test", ctx);
+
+		expect(setWidget).toHaveBeenCalledWith(
+			"bedtime-test-selftest",
+			[expect.stringContaining("Test situation:")],
+			{ placement: "aboveEditor" },
+		);
 	});
 });

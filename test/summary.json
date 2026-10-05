@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-25T20:47:54.042Z",
-  "systemTime": "Fri Sep 25 2026 16:47:54 GMT-0400 (Eastern Daylight Time)",
+  "generatedAt": "2026-10-05T02:29:41.522Z",
+  "systemTime": "Sun Oct 04 2026 22:29:41 GMT-0400 (Eastern Daylight Time)",
   "pi": {
     "provider": "openrouter",
     "model": "deepseek/deepseek-v4.1-flash",
-    "sessionId": "01a0da27-2df9-77c9-9b3e-cf9babb67296"
+    "sessionId": "01a108c6-4643-725f-b34a-84f19efd4185"
   },
   "totals": {
     "cases": 23,
@@ -92,7 +92,7 @@
     },
     {
       "file": "test_14.json",
-      "name": "Live Pi: reminder-check command registered",
+      "name": "Live Pi: bedtime-test command registered",
       "category": "live-rpc",
       "pass": true
     },

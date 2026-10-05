@@ -1,6 +1,6 @@
 {
   "id": 14,
-  "name": "Live Pi: reminder-check command registered",
+  "name": "Live Pi: bedtime-test command registered",
   "category": "live-rpc",
   "input": "get_commands",
   "expected": true,

@@ -3,7 +3,7 @@
   "name": "Live Pi: first trigger (reset) shows popup + notify",
   "category": "live-rpc",
   "input": {
-    "command": "/reminder-check 02:30 reset"
+    "command": "/bedtime-test 02:30 reset"
   },
   "expected": "popup",
   "actual": {
