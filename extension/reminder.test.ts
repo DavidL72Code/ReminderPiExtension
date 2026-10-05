@@ -663,6 +663,23 @@ describe("reminder window", () => {
 		expect(isDefaultWindow()).toBe(true);
 	});
 
+	it("standalone /bedtime-test reset clears dedup without a time", async () => {
+		const commands = registeredCommands();
+
+		// Remind once and confirm dedup is set.
+		await commands["bedtime-test"]("3:00", mockCtx());
+		expect(getRemindedDate()).not.toBeNull();
+
+		// Standalone reset clears dedup.
+		const resetCtx = mockCtx();
+		await commands["bedtime-test"]("reset", resetCtx);
+		expect(getRemindedDate()).toBeNull();
+		expect(resetCtx.ui.notify).toHaveBeenCalledWith(
+			expect.stringContaining("dedup cleared"),
+			"info",
+		);
+	});
+
 	it("/bedtime-test reset clears dedup but preserves on/off and window", async () => {
 		const commands = registeredCommands();
 		setEnabled(false);
@@ -716,8 +733,8 @@ describe("run_test self-test", () => {
 
 		// Inclusive end boundary is fixed and reminds.
 		expect(byName("inclusive end")).toMatchObject({
-			time: "05:59",
-			command: "/bedtime-test 05:59 reset",
+			time: expect.stringMatching(/05:59/),
+			command: expect.stringMatching(/\/bedtime-test \d{4}-\d{2}-\d{2} 05:59 reset/),
 			alreadyReminded: false,
 			reminded: true,
 			pass: true,
@@ -725,7 +742,7 @@ describe("run_test self-test", () => {
 
 		// First out-of-boundary check is the fixed 06:00 exclusive end.
 		expect(byName("outside 1")).toMatchObject({
-			time: "06:00",
+			time: expect.stringMatching(/06:00/),
 			alreadyReminded: false,
 			reminded: false,
 			pass: true,
@@ -749,7 +766,7 @@ describe("run_test self-test", () => {
 		const rows = groupSelfTestScenarios(runSelfTest());
 		const consecutive = rows.find((r) => r.scenario === "Consecutive (dedup)")!;
 		expect(consecutive.command).toMatch(
-			/^\/bedtime-test \d{2}:\d{2} reset; \/bedtime-test \d{2}:\d{2}$/,
+			/^\/bedtime-test \d{4}-\d{2}-\d{2} \d{2}:\d{2} reset; \/bedtime-test \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
 		);
 		expect(consecutive.output).toBe("reminder shown, no reminder");
 		expect(consecutive.expected).toBe("reminder shown, no reminder");
@@ -763,7 +780,7 @@ describe("run_test self-test", () => {
 		expect(text).toContain("Output:");
 		expect(text).toContain("Expected:");
 		expect(text).toContain("Pass/Fail: PASS");
-		expect(text).toContain("/bedtime-test 05:59 reset");
+		expect(text).toMatch(/\/bedtime-test \d{4}-\d{2}-\d{2} 05:59 reset/);
 		expect(text).toMatch(/Seed: \d+/);
 	});
 
@@ -851,7 +868,7 @@ describe("run_test self-test", () => {
 			expect.objectContaining({
 				customType: "bedtime-test-help",
 				display: true,
-				content: expect.stringContaining("1. /bedtime-test HH:MM [reset]"),
+				content: expect.stringContaining("1. /bedtime-test [YYYY-MM-DD | Month D YYYY] HH:MM [reset]"),
 			}),
 		);
 		expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -862,11 +879,12 @@ describe("run_test self-test", () => {
 
 	it("the menu lists every option with a description", () => {
 		const text = formatHelp().join("\n");
-		expect(text).toContain("1. /bedtime-test HH:MM [reset]");
-		expect(text).toContain("2. /bedtime-test on | off");
-		expect(text).toContain("3. /bedtime-test status");
-		expect(text).toContain("4. /bedtime-test time");
-		expect(text).toContain("5. /bedtime-test run_test");
+		expect(text).toContain("1. /bedtime-test [YYYY-MM-DD | Month D YYYY] HH:MM [reset]");
+		expect(text).toContain("2. /bedtime-test reset");
+		expect(text).toContain("3. /bedtime-test on | off");
+		expect(text).toContain("4. /bedtime-test status");
+		expect(text).toContain("5. /bedtime-test time");
+		expect(text).toContain("6. /bedtime-test run_test");
 	});
 
 	it("/bedtime-test run_test falls back to a widget without sendMessage", async () => {
@@ -894,3 +912,75 @@ describe("run_test self-test", () => {
 		);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// /bedtime-test date tracking
+// ---------------------------------------------------------------------------
+
+describe("bedtime-test date tracking", () => {
+	const stateFile = path.join(
+		os.tmpdir(),
+		`pireminder-date-${process.pid}.json`,
+	);
+
+	function registeredCommands() {
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		const fakePi = {
+			on: () => {},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+		} as any;
+		reminder(fakePi);
+		return commands;
+	}
+
+	beforeEach(() => {
+		process.env[STATE_ENV] = stateFile;
+		clearPersistedState();
+		resetState();
+	});
+
+	afterEach(() => {
+		clearPersistedState();
+		resetState();
+		delete process.env[STATE_ENV];
+	});
+
+	it("accepts a natural-language date before the time", async () => {
+		const commands = registeredCommands();
+		const ctx = mockCtx();
+		await commands["bedtime-test"]("october 6 2026 4:30", ctx);
+		expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+	});
+
+	it("accepts YYYY-MM-DD format", async () => {
+		const commands = registeredCommands();
+		const ctx = mockCtx();
+		await commands["bedtime-test"]("2026-10-06 4:30", ctx);
+		expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+	});
+
+	it("tracks dedup across different dates and reset", async () => {
+		const commands = registeredCommands();
+
+		// Oct 6 → first time, should remind
+		await commands["bedtime-test"]("october 6 2026 4:30", mockCtx());
+
+		// Oct 7 → new day, should remind
+		await commands["bedtime-test"]("october 7 2026 5:00", mockCtx());
+
+		// Same Oct 7 without reset → should be silent
+		const silent = mockCtx();
+		await commands["bedtime-test"]("october 7 2026 5:30", silent);
+		expect(silent.ui.confirm).not.toHaveBeenCalled();
+
+		// Same Oct 7 with reset → should remind again
+		const again = mockCtx();
+		await commands["bedtime-test"]("october 7 2026 5:30 reset", again);
+		expect(again.ui.confirm).toHaveBeenCalledTimes(1);
+	});
+});
+

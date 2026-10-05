@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-10-05T02:29:41.522Z",
-  "systemTime": "Sun Oct 04 2026 22:29:41 GMT-0400 (Eastern Daylight Time)",
+  "generatedAt": "2026-10-05T05:33:56.496Z",
+  "systemTime": "Mon Oct 05 2026 01:33:56 GMT-0400 (Eastern Daylight Time)",
   "pi": {
     "provider": "openrouter",
-    "model": "deepseek/deepseek-v4.1-flash",
-    "sessionId": "01a108c6-4643-725f-b34a-84f19efd4185"
+    "model": "moonshotai/kimi-k2.6",
+    "sessionId": "01a10a74-bfe7-76c6-a7f8-6270ceccbd1f"
   },
   "totals": {
-    "cases": 23,
-    "passed": 23,
+    "cases": 14,
+    "passed": 14,
     "failed": 0
   },
   "cases": [
@@ -56,98 +56,44 @@
     },
     {
       "file": "test_8.json",
+      "name": "Multi-day date tracking: Oct 6 → Oct 7 → Oct 7 silent → Oct 7 reset",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_9.json",
       "name": "First trigger at 02:30, answer YES",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_9.json",
+      "file": "test_10.json",
       "name": "First trigger at 05:59, answer NO",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_10.json",
+      "file": "test_11.json",
       "name": "Repeat same day is silent (no popup, no notify)",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_11.json",
+      "file": "test_12.json",
       "name": "Daytime 14:00 is silent",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_12.json",
+      "file": "test_13.json",
       "name": "PIREMINDER_NOW=02:30 fires the automatic reminder",
       "category": "automatic",
       "pass": true
     },
     {
-      "file": "test_13.json",
+      "file": "test_14.json",
       "name": "PIREMINDER_NOW=14:00 stays silent",
       "category": "automatic",
-      "pass": true
-    },
-    {
-      "file": "test_14.json",
-      "name": "Live Pi: bedtime-test command registered",
-      "category": "live-rpc",
-      "pass": true
-    },
-    {
-      "file": "test_15.json",
-      "name": "Live Pi: first trigger (reset) shows popup + notify",
-      "category": "live-rpc",
-      "pass": true
-    },
-    {
-      "file": "test_16.json",
-      "name": "Live Pi: repeat same day is silent",
-      "category": "live-rpc",
-      "pass": true
-    },
-    {
-      "file": "test_17.json",
-      "name": "Live Pi: daytime 14:00 is silent",
-      "category": "live-rpc",
-      "pass": true
-    },
-    {
-      "file": "test_18.json",
-      "name": "Live Pi: invalid hour 25:00 warns",
-      "category": "live-rpc",
-      "pass": true
-    },
-    {
-      "file": "test_19.json",
-      "name": "Live Pi: invalid format 'abc' warns",
-      "category": "live-rpc",
-      "pass": true
-    },
-    {
-      "file": "test_20.json",
-      "name": "Live Pi startup: PIREMINDER_NOW=02:30 reminds",
-      "category": "live-boot",
-      "pass": true
-    },
-    {
-      "file": "test_21.json",
-      "name": "Live Pi startup: PIREMINDER_NOW=06:00 stays silent",
-      "category": "live-boot",
-      "pass": true
-    },
-    {
-      "file": "test_22.json",
-      "name": "Live Pi: session 1 on a night reminds (writes state)",
-      "category": "live-boot",
-      "pass": true
-    },
-    {
-      "file": "test_23.json",
-      "name": "Live Pi: session 2 same night is silent (persistent dedup)",
-      "category": "live-boot",
       "pass": true
     }
   ]

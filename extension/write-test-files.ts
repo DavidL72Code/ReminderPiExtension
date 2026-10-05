@@ -4,7 +4,7 @@
  * Runs every reminder test case and writes one numbered JSON file per case
  * into ../test/ (test_1.json, test_2.json, ...) plus test/summary.json.
  *
- * Three kinds of cases are included:
+ * Five kinds of cases are included:
  *   - policy    : pure time-policy checks (simulated Date)
  *   - ui        : notification + yes/no popup flow with a mock Pi UI
  *   - automatic : PIREMINDER_NOW override on the automatic path
@@ -142,6 +142,38 @@ function policyCases(): void {
 		expected: "all false",
 		actual: sweep,
 		pass: sweepPass,
+	});
+
+	// Multi-day explicit date tracking (simulates /bedtime-test with dates)
+	resetState();
+	const oct6_430 = shouldRemind(new Date(2026, 9, 6, 4, 30));
+	const oct7_500 = shouldRemind(new Date(2026, 9, 7, 5, 0));
+	const oct7_530_no_reset = shouldRemind(new Date(2026, 9, 7, 5, 30));
+	resetState();
+	const oct7_530_reset = shouldRemind(new Date(2026, 9, 7, 5, 30));
+	record({
+		name: "Multi-day date tracking: Oct 6 → Oct 7 → Oct 7 silent → Oct 7 reset",
+		category: "policy",
+		input: {
+			checks: [
+				"2026-10-06 04:30",
+				"2026-10-07 05:00",
+				"2026-10-07 05:30 (no reset)",
+				"2026-10-07 05:30 (reset)",
+			],
+		},
+		expected: {
+			oct6_430: true,
+			oct7_500: true,
+			oct7_530_no_reset: false,
+			oct7_530_reset: true,
+		},
+		actual: { oct6_430, oct7_500, oct7_530_no_reset, oct7_530_reset },
+		pass:
+			oct6_430 === true &&
+			oct7_500 === true &&
+			oct7_530_no_reset === false &&
+			oct7_530_reset === true,
 	});
 }
 

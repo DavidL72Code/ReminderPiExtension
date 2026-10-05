@@ -325,29 +325,31 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// Bedtime test/control command, run against the REAL Pi UI:
-	//   /bedtime-test 4:30          (simulate a check; respects today's dedup)
-	//   /bedtime-test 4:30 reset    (clear dedup first)
+	//   /bedtime-test [date] HH:MM     (simulate a check; respects dedup)
+	//   /bedtime-test [date] HH:MM reset (clear dedup first)
+	//   /bedtime-test reset              (clear dedup without time)
 	//   /bedtime-test on | off | status | time ...
-	//   /bedtime-test run_test      (run the in-extension self-test)
+	//   /bedtime-test run_test           (run the in-extension self-test)
 	pi.registerCommand("bedtime-test", {
 		description:
-			"Bedtime reminder: test at HH:MM, manage on/off/time, or run_test (add 'reset' to clear dedup)",
+			"Bedtime reminder: test at [date] HH:MM, reset dedup, manage on/off/time, or run_test",
 		handler: (args, ctx) => runBedtimeTestCommand(args, ctx, pi),
 	});
 }
 
 /**
- * Shared handler for /bedtime-test. Parses an HH:MM argument, optionally
- * clears today's dedup state when 'reset' is present, then runs a reminder
+ * Shared handler for /bedtime-test. Parses an optional date + HH:MM argument,
+ * optionally clears dedup state when 'reset' is present, then runs a reminder
  * check at the simulated time against the real Pi UI. Also handles the
- * on/off/status/time subcommands.
+ * on/off/status/time/reset subcommands and run_test.
  */
 async function runBedtimeTestCommand(
 	args: string,
 	ctx: ExtensionContext,
 	pi?: ExtensionAPI,
 ): Promise<void> {
-	const parts = (args || "").trim().toLowerCase().split(/\s+/);
+	const rawParts = (args || "").trim().split(/\s+/);
+	const parts = rawParts.map((p) => p.toLowerCase());
 	const sub = parts[0] || "";
 
 	// No argument (or "help"): show the numbered command menu.
@@ -375,6 +377,14 @@ async function runBedtimeTestCommand(
 				`(window ${getWindowLabel()}, ${kind}).`,
 			"info",
 		);
+		return;
+	}
+
+	// reset: clear today's dedup so the automatic reminder can fire again.
+	if (sub === "reset") {
+		remindedDate = null;
+		persistState();
+		ctx.ui.notify("Today's reminder dedup cleared — the next check will fire if inside the window.", "info");
 		return;
 	}
 
@@ -447,25 +457,70 @@ async function runBedtimeTestCommand(
 		return;
 	}
 
-	const match = sub.match(/^(\d{1,2}):(\d{2})$/);
-	if (!match) {
+	// Find the HH:MM token; everything before it is an optional date.
+	let timeIdx = -1;
+	for (let i = 0; i < parts.length; i++) {
+		if (/^(\d{1,2}):(\d{2})$/.test(parts[i])) {
+			timeIdx = i;
+			break;
+		}
+	}
+
+	if (timeIdx === -1) {
 		ctx.ui.notify(
-			"Usage: /bedtime-test HH:MM [reset] | on | off | status | time | run_test (run /bedtime-test with no args for the full list)",
+			"Usage: /bedtime-test [YYYY-MM-DD | Month D YYYY] HH:MM [reset] | on | off | status | time | run_test (run /bedtime-test with no args for the full list)",
 			"warning",
 		);
 		return;
 	}
-	const hour = Number(match[1]);
-	const minute = Number(match[2]);
+
+	const dateStr = rawParts.slice(0, timeIdx).join(" ");
+	const timeMatch = parts[timeIdx].match(/^(\d{1,2}):(\d{2})$/)!;
+	const hour = Number(timeMatch[1]);
+	const minute = Number(timeMatch[2]);
 	if (hour > 23 || minute > 59) {
 		ctx.ui.notify("Invalid time. Use HH:MM (00:00–23:59).", "warning");
 		return;
 	}
-	const simulated = new Date();
-	simulated.setHours(hour, minute, 0, 0);
+
+	let simulated: Date;
+	if (dateStr) {
+		// Parse YYYY-MM-DD explicitly to avoid UTC/local ambiguity.
+		const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+		if (isoMatch) {
+			simulated = new Date(
+				Number(isoMatch[1]),
+				Number(isoMatch[2]) - 1,
+				Number(isoMatch[3]),
+				hour,
+				minute,
+				0,
+				0,
+			);
+		} else {
+			const parsed = new Date(dateStr);
+			if (isNaN(parsed.getTime())) {
+				ctx.ui.notify(`Invalid date: ${dateStr}`, "warning");
+				return;
+			}
+			simulated = new Date(
+				parsed.getFullYear(),
+				parsed.getMonth(),
+				parsed.getDate(),
+				hour,
+				minute,
+				0,
+				0,
+			);
+		}
+	} else {
+		simulated = new Date();
+		simulated.setHours(hour, minute, 0, 0);
+	}
+
 	// Optional reset so the demo can be repeated in one session. Only the dedup
 	// date is cleared; the on/off choice is preserved.
-	if (parts.includes("reset")) {
+	if (parts.slice(timeIdx + 1).includes("reset")) {
 		remindedDate = null;
 		persistState();
 	}
@@ -558,6 +613,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		min + Math.floor(rng() * (max - min + 1));
 	const fmt = (m: number) =>
 		`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+	const fmtDate = (d: Date) =>
+		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 	// Snapshot so the test never disturbs the user's real configuration.
 	const savedReminded = remindedDate;
@@ -566,9 +623,32 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 	const savedEnd = windowEndMinutes;
 
 	const results: SelfTestCase[] = [];
-	const at = (h: number, m = 0) => new Date(2025, 0, 1, h, m);
-	const atMin = (m: number, day = 1) =>
-		new Date(2025, 0, day, Math.floor(m / 60), m % 60, 0, 0);
+	// Pick a random anchor year/month/day for the self-test so every run
+	// exercises a different calendar date. Derived dates (next day, same day
+	// dedup, etc.) are computed from this anchor.
+	const anchorYear = randInt(2020, 2026);
+	const anchorMonth = randInt(0, 11);
+	const anchorDay = randInt(1, 28); // keep it simple, avoid month-boundary headaches
+	const baseDate = new Date(anchorYear, anchorMonth, anchorDay);
+
+	const nextDay = new Date(baseDate);
+	nextDay.setDate(baseDate.getDate() + 1);
+
+	// Additional dates for scenarios that need a fresh calendar day.
+	const otherDate = new Date(anchorYear, anchorMonth, anchorDay + 2);
+
+	const at = (h: number, m = 0, d = baseDate) =>
+		new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m);
+	const atMin = (m: number, d = baseDate) =>
+		new Date(
+			d.getFullYear(),
+			d.getMonth(),
+			d.getDate(),
+			Math.floor(m / 60),
+			m % 60,
+			0,
+			0,
+		);
 	const record = (c: {
 		name: string;
 		scenario: string;
@@ -604,8 +684,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		record({
 			name: "regular in-window",
 			scenario: "Regular in-window",
-			time: fmt(regular),
-			command: `/bedtime-test ${fmt(regular)} reset`,
+			time: `${fmtDate(baseDate)} ${fmt(regular)}`,
+			command: `/bedtime-test ${fmtDate(baseDate)} ${fmt(regular)} reset`,
 			alreadyReminded: false,
 			expected: true,
 			actual: shouldRemind(atMin(regular)),
@@ -616,8 +696,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		record({
 			name: "inclusive start",
 			scenario: "Boundary (inclusive)",
-			time: "00:00",
-			command: "/bedtime-test 00:00 reset",
+			time: `${fmtDate(baseDate)} 00:00`,
+			command: `/bedtime-test ${fmtDate(baseDate)} 00:00 reset`,
 			alreadyReminded: false,
 			expected: true,
 			actual: shouldRemind(at(0, 0)),
@@ -626,8 +706,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		record({
 			name: "inclusive end",
 			scenario: "Boundary (inclusive)",
-			time: "05:59",
-			command: "/bedtime-test 05:59 reset",
+			time: `${fmtDate(baseDate)} 05:59`,
+			command: `/bedtime-test ${fmtDate(baseDate)} 05:59 reset`,
 			alreadyReminded: false,
 			expected: true,
 			actual: shouldRemind(at(5, 59)),
@@ -646,8 +726,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 			record({
 				name: `outside ${i + 1}`,
 				scenario: "Out of boundary",
-				time: fmt(m),
-				command: `/bedtime-test ${fmt(m)} reset`,
+				time: `${fmtDate(baseDate)} ${fmt(m)}`,
+				command: `/bedtime-test ${fmtDate(baseDate)} ${fmt(m)} reset`,
 				alreadyReminded: false,
 				expected: false,
 				actual: shouldRemind(atMin(m)),
@@ -661,8 +741,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		record({
 			name: "first in-window",
 			scenario: "Consecutive (dedup)",
-			time: fmt(firstTime),
-			command: `/bedtime-test ${fmt(firstTime)} reset`,
+			time: `${fmtDate(baseDate)} ${fmt(firstTime)}`,
+			command: `/bedtime-test ${fmtDate(baseDate)} ${fmt(firstTime)} reset`,
 			alreadyReminded: false,
 			expected: true,
 			actual: shouldRemind(atMin(firstTime)),
@@ -670,8 +750,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		record({
 			name: "second in-window",
 			scenario: "Consecutive (dedup)",
-			time: fmt(secondTime),
-			command: `/bedtime-test ${fmt(secondTime)}`,
+			time: `${fmtDate(baseDate)} ${fmt(secondTime)}`,
+			command: `/bedtime-test ${fmtDate(baseDate)} ${fmt(secondTime)}`,
 			alreadyReminded: true,
 			expected: false,
 			actual: shouldRemind(atMin(secondTime)),
@@ -680,15 +760,15 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		// 5. A new calendar day resets the dedup.
 		const nextTime = randInt(0, DEFAULT_WINDOW_END_MINUTES - 1);
 		remindedDate = null;
-		shouldRemind(atMin(nextTime, 1));
+		shouldRemind(atMin(nextTime, baseDate));
 		record({
 			name: "next day",
 			scenario: "Next day",
-			time: `${fmt(nextTime)} next day`,
-			command: `/bedtime-test ${fmt(nextTime)} reset`,
+			time: `${fmtDate(nextDay)} ${fmt(nextTime)}`,
+			command: `/bedtime-test ${fmtDate(nextDay)} ${fmt(nextTime)}`,
 			alreadyReminded: false,
 			expected: true,
-			actual: shouldRemind(atMin(nextTime, 2)),
+			actual: shouldRemind(atMin(nextTime, nextDay)),
 		});
 
 		// 6. Custom (non-wrapping) window with random bounds.
@@ -706,22 +786,22 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 			name: "custom inside",
 			scenario: "Custom window",
 			setup: customSetup,
-			time: fmt(customInside),
-			command: `/bedtime-test ${fmt(customInside)} reset`,
+			time: `${fmtDate(otherDate)} ${fmt(customInside)}`,
+			command: `/bedtime-test ${fmtDate(otherDate)} ${fmt(customInside)} reset`,
 			alreadyReminded: false,
 			expected: true,
-			actual: shouldRemind(atMin(customInside)),
+			actual: shouldRemind(atMin(customInside, otherDate)),
 		});
 		remindedDate = null;
 		record({
 			name: "custom outside",
 			scenario: "Custom window",
 			setup: customSetup,
-			time: fmt(customEnd),
-			command: `/bedtime-test ${fmt(customEnd)} reset`,
+			time: `${fmtDate(otherDate)} ${fmt(customEnd)}`,
+			command: `/bedtime-test ${fmtDate(otherDate)} ${fmt(customEnd)} reset`,
 			alreadyReminded: false,
 			expected: false,
-			actual: shouldRemind(atMin(customEnd)),
+			actual: shouldRemind(atMin(customEnd, otherDate)),
 		});
 
 		// 7. Wrap-around window with random bounds (start > end).
@@ -741,8 +821,8 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 				name,
 				scenario: "Wrap window",
 				setup: wrapSetup,
-				time: fmt(m),
-				command: `/bedtime-test ${fmt(m)} reset`,
+				time: `${fmtDate(baseDate)} ${fmt(m)}`,
+				command: `/bedtime-test ${fmtDate(baseDate)} ${fmt(m)} reset`,
 				alreadyReminded: false,
 				expected,
 				actual: shouldRemind(atMin(m)),
@@ -845,21 +925,26 @@ export function formatHelp(): string[] {
 	return [
 		"Bedtime reminder — available commands",
 		"",
-		"  1. /bedtime-test HH:MM [reset]",
+		"  1. /bedtime-test [YYYY-MM-DD | Month D YYYY] HH:MM [reset]",
 		"       Simulate a reminder check at a time (e.g. /bedtime-test 4:30).",
-		"       Add 'reset' to clear today's dedup first so it can fire again.",
+		"       Add an optional date before the time, or add 'reset' to clear",
+		"       today's dedup first so it can fire again.",
 		"",
-		"  2. /bedtime-test on | off",
+		"  2. /bedtime-test reset",
+		"       Clear today's dedup in a live session so the automatic reminder",
+		"       can fire again on the next check.",
+		"",
+		"  3. /bedtime-test on | off",
 		"       Enable or disable the automatic reminder (persisted).",
 		"",
-		"  3. /bedtime-test status",
+		"  4. /bedtime-test status",
 		"       Show whether reminders are on/off and the active window.",
 		"",
-		"  4. /bedtime-test time [default | HH:MM HH:MM]",
+		"  5. /bedtime-test time [default | HH:MM HH:MM]",
 		"       Show or set the reminder window. Default is 00:00–06:00;",
 		"       a custom window may wrap midnight (e.g. 22:00 06:00).",
 		"",
-		"  5. /bedtime-test run_test [seed]",
+		"  6. /bedtime-test run_test [seed]",
 		"       Run the built-in self-test (randomized). Pass a seed to repeat.",
 	];
 }

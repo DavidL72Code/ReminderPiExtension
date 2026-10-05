@@ -1,27 +1,26 @@
 {
   "id": 8,
-  "name": "First trigger at 02:30, answer YES",
-  "category": "ui",
+  "name": "Multi-day date tracking: Oct 6 → Oct 7 → Oct 7 silent → Oct 7 reset",
+  "category": "policy",
   "input": {
-    "now": "02:30",
-    "answer": "yes"
-  },
-  "expected": {
-    "popup": true,
-    "notifications": 2
-  },
-  "actual": {
-    "popup": true,
-    "notifications": [
-      "It's late — take a break and continue again in the morning.",
-      "Great — rest well and pick it up in the morning. 👋"
+    "checks": [
+      "2026-10-06 04:30",
+      "2026-10-07 05:00",
+      "2026-10-07 05:30 (no reset)",
+      "2026-10-07 05:30 (reset)"
     ]
   },
-  "pass": true,
-  "details": {
-    "popup": {
-      "title": "Time for a Break",
-      "message": "It's late — take a break and continue again in the morning. Do you acknowledge this advice?"
-    }
-  }
+  "expected": {
+    "oct6_430": true,
+    "oct7_500": true,
+    "oct7_530_no_reset": false,
+    "oct7_530_reset": true
+  },
+  "actual": {
+    "oct6_430": true,
+    "oct7_500": true,
+    "oct7_530_no_reset": false,
+    "oct7_530_reset": true
+  },
+  "pass": true
 }

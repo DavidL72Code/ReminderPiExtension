@@ -1,9 +1,15 @@
 {
   "id": 14,
-  "name": "Live Pi: bedtime-test command registered",
-  "category": "live-rpc",
-  "input": "get_commands",
-  "expected": true,
-  "actual": true,
+  "name": "PIREMINDER_NOW=14:00 stays silent",
+  "category": "automatic",
+  "input": {
+    "PIREMINDER_NOW": "14:00"
+  },
+  "expected": {
+    "popup": false
+  },
+  "actual": {
+    "popup": false
+  },
   "pass": true
 }

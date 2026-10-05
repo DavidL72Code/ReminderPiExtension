@@ -13,11 +13,20 @@
  *   4. /bedtime-test 14:00 reset    → daytime (out of window): silent
  *   5. /bedtime-test 25:00 reset    → invalid hour: warning notification
  *   6. /bedtime-test abc  reset     → invalid format: warning notification
- *   7. /bedtime-test off, status, on → persisted toggle notifications
- *   8. /bedtime-test time …         → default/custom window notifications
- *   9. custom window behavior       → fires once inside, silent after/outside
+ *   7. date tracking:
+ *      /bedtime-test 2026-10-06 4:30 reset  → explicit date reminds
+ *      /bedtime-test 2026-10-07 5:00        → new date reminds
+ *      /bedtime-test 2026-10-07 5:30        → same date silent
+ *      /bedtime-test 2026-10-07 5:30 reset  → reset + same date reminds
+ *      /bedtime-test october 6 2026 4:30 reset → natural language date
+ *   8. /bedtime-test reset           → standalone dedup clear
+ *   9. /bedtime-test off, status, on → persisted toggle notifications
+ *  10. /bedtime-test time …          → default/custom window notifications
+ *  11. custom window behavior        → fires once inside, silent after/outside
+ *  12. wrap window behavior          → 22:00–06:00 night/early vs midday
+ *  13. bare command + run_test       → help menu + self-test report
  *
- * Success cases (2) and failure cases (3–6) are all verified.
+ * Success cases (2, 7, 8) and failure cases (3–6) are all verified.
  *
  * Usage: node live-rpc-test.js
  */
@@ -166,6 +175,33 @@ async function main() {
 	await runCase("daytime out-of-window", "/bedtime-test 14:00 reset", "silent");
 	await runCase("invalid hour", "/bedtime-test 25:00 reset", "warning");
 	await runCase("invalid format", "/bedtime-test abc reset", "warning");
+
+	// Date-tracking cases: explicit dates behave like calendar-day dedup
+	await runCase(
+		"explicit date first trigger",
+		"/bedtime-test 2026-10-06 4:30 reset",
+		"popup+notify",
+	);
+	await runCase(
+		"new explicit date reminds",
+		"/bedtime-test 2026-10-07 5:00",
+		"popup+notify",
+	);
+	await runCase(
+		"same explicit date silent",
+		"/bedtime-test 2026-10-07 5:30",
+		"silent",
+	);
+	await runCase(
+		"same explicit date with reset reminds",
+		"/bedtime-test 2026-10-07 5:30 reset",
+		"popup+notify",
+	);
+	await runCase("natural language date", "/bedtime-test october 6 2026 4:30 reset", "popup+notify");
+
+	// Standalone reset clears dedup so the automatic path can fire again.
+	await runCase("standalone reset", "/bedtime-test reset", "notify", "dedup cleared");
+
 	await runCase("disable reminders", "/bedtime-test off", "notify", "disabled");
 	await runCase("status while off", "/bedtime-test status", "notify", "currently off");
 	await runCase("manual check while off", "/bedtime-test 4:30 reset", "popup+notify");

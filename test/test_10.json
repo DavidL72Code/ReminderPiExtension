@@ -1,18 +1,27 @@
 {
   "id": 10,
-  "name": "Repeat same day is silent (no popup, no notify)",
+  "name": "First trigger at 05:59, answer NO",
   "category": "ui",
   "input": {
-    "first": "02:30",
-    "repeat": "02:35"
+    "now": "05:59",
+    "answer": "no"
   },
   "expected": {
-    "repeatPopup": false,
-    "repeatNotifications": 0
+    "popup": true,
+    "notifications": 2
   },
   "actual": {
-    "repeatPopup": false,
-    "repeatNotifications": 0
+    "popup": true,
+    "notifications": [
+      "It's late — take a break and continue again in the morning.",
+      "Understood — you won't be reminded again today."
+    ]
   },
-  "pass": true
+  "pass": true,
+  "details": {
+    "popup": {
+      "title": "Time for a Break",
+      "message": "It's late — take a break and continue again in the morning. Do you acknowledge this advice?"
+    }
+  }
 }
