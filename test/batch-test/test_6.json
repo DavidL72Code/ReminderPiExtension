@@ -1,18 +1,143 @@
 {
   "id": 6,
-  "name": "Repeat same day is silent (no popup, no notify)",
-  "category": "ui",
-  "input": {
-    "first": "02:30",
-    "repeat": "02:35"
-  },
-  "expected": {
-    "repeatPopup": false,
-    "repeatNotifications": 0
-  },
-  "actual": {
-    "repeatPopup": false,
-    "repeatNotifications": 0
-  },
+  "name": "Live Pi RPC session: popup, dedup, daytime, invalid input, wrap window",
+  "category": "live-rpc",
+  "scenarios": [
+    "registration",
+    "in boundary: first trigger",
+    "dedup: repeat same day",
+    "out of boundary: daytime",
+    "invalid input: hour",
+    "invalid input: format",
+    "wrap window setup",
+    "wrap boundary: start inclusive",
+    "dedup: same evening",
+    "wrap boundary: end exclusive",
+    "in boundary: after midnight"
+  ],
+  "steps": [
+    {
+      "scenario": "registration",
+      "check": "get_commands",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "scenario": "in boundary: first trigger",
+      "check": "/bedtime-test 02:30 reset",
+      "expected": "popup",
+      "actual": {
+        "dialogs": 1,
+        "notifications": [
+          "It's late — take a break and continue again in the morning.",
+          "Great — rest well and pick it up in the morning. 👋"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "scenario": "dedup: repeat same day",
+      "check": "/bedtime-test 02:35",
+      "expected": "silent",
+      "actual": {
+        "dialogs": 0,
+        "notifications": []
+      },
+      "pass": true
+    },
+    {
+      "scenario": "out of boundary: daytime",
+      "check": "/bedtime-test 14:00 reset",
+      "expected": "silent",
+      "actual": {
+        "dialogs": 0,
+        "notifications": []
+      },
+      "pass": true
+    },
+    {
+      "scenario": "invalid input: hour",
+      "check": "/bedtime-test 25:00 reset",
+      "expected": "warning",
+      "actual": {
+        "dialogs": 0,
+        "notifications": [
+          "Invalid time. Use HH:MM (00:00–23:59)."
+        ]
+      },
+      "pass": true
+    },
+    {
+      "scenario": "invalid input: format",
+      "check": "/bedtime-test abc reset",
+      "expected": "warning",
+      "actual": {
+        "dialogs": 0,
+        "notifications": [
+          "Usage: /bedtime-test [YYYY-MM-DD | Month D YYYY] HH:MM [reset] | on | off | status | time | run_test (run /bedtime-test with no args for the full list)"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "scenario": "wrap window setup",
+      "check": "/bedtime-test time 22:00 02:00",
+      "expected": "window-set",
+      "actual": {
+        "dialogs": 0,
+        "notifications": [
+          "Reminder window set to 22:00–02:00."
+        ]
+      },
+      "pass": true
+    },
+    {
+      "scenario": "wrap boundary: start inclusive",
+      "check": "/bedtime-test 2026-10-06 22:00 reset",
+      "expected": "popup",
+      "actual": {
+        "dialogs": 1,
+        "notifications": [
+          "It's late — take a break and continue again in the morning.",
+          "Great — rest well and pick it up in the morning. 👋"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "scenario": "dedup: same evening",
+      "check": "/bedtime-test 2026-10-06 23:30",
+      "expected": "silent",
+      "actual": {
+        "dialogs": 0,
+        "notifications": []
+      },
+      "pass": true
+    },
+    {
+      "scenario": "wrap boundary: end exclusive",
+      "check": "/bedtime-test 2026-10-07 02:00 reset",
+      "expected": "silent",
+      "actual": {
+        "dialogs": 0,
+        "notifications": []
+      },
+      "pass": true
+    },
+    {
+      "scenario": "in boundary: after midnight",
+      "check": "/bedtime-test 2026-10-07 01:59 reset",
+      "expected": "popup",
+      "actual": {
+        "dialogs": 1,
+        "notifications": [
+          "It's late — take a break and continue again in the morning.",
+          "Great — rest well and pick it up in the morning. 👋"
+        ]
+      },
+      "pass": true
+    }
+  ],
   "pass": true
 }

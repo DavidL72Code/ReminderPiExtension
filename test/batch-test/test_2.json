@@ -1,20 +1,83 @@
 {
   "id": 2,
-  "name": "Next calendar day resumes reminders",
+  "name": "Wrap-around window 22:00–02:00: boundaries, in-window, dedup",
   "category": "policy",
-  "input": {
-    "day1": "2025-01-01 03:00/04:00",
-    "day2": "2025-01-02 01:00"
-  },
-  "expected": {
-    "day1": true,
-    "day1Repeat": false,
-    "day2": true
-  },
-  "actual": {
-    "day1": true,
-    "day1Repeat": false,
-    "day2": true
-  },
+  "setup": "/bedtime-test time 22:00 02:00",
+  "scenarios": [
+    "wrap boundary: before start",
+    "wrap boundary: start inclusive",
+    "dedup: same evening",
+    "wrap boundary: past midnight is a new calendar day",
+    "dedup: after midnight",
+    "in boundary: last minute",
+    "wrap boundary: end exclusive",
+    "out of boundary: midday",
+    "in boundary: before midnight"
+  ],
+  "steps": [
+    {
+      "scenario": "wrap boundary: before start",
+      "check": "/bedtime-test 2026-10-06 21:59",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "wrap boundary: start inclusive",
+      "check": "/bedtime-test 2026-10-06 22:00",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "scenario": "dedup: same evening",
+      "check": "/bedtime-test 2026-10-06 23:30",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "wrap boundary: past midnight is a new calendar day",
+      "check": "/bedtime-test 2026-10-07 00:00",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "scenario": "dedup: after midnight",
+      "check": "/bedtime-test 2026-10-07 01:00",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "in boundary: last minute",
+      "check": "/bedtime-test 2026-10-07 01:59 reset",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "scenario": "wrap boundary: end exclusive",
+      "check": "/bedtime-test 2026-10-07 02:00 reset",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "out of boundary: midday",
+      "check": "/bedtime-test 2026-10-07 12:00 reset",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "in boundary: before midnight",
+      "check": "/bedtime-test 2026-10-07 23:59 reset",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    }
+  ],
   "pass": true
 }

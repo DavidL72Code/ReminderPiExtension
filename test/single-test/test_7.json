@@ -1,15 +1,17 @@
 {
   "id": 7,
-  "name": "PIREMINDER_NOW=02:30 fires the automatic reminder",
-  "category": "automatic",
+  "name": "Daytime 14:00 is silent",
+  "category": "ui",
   "input": {
-    "PIREMINDER_NOW": "02:30"
+    "now": "14:00"
   },
   "expected": {
-    "popup": true
+    "popup": false,
+    "notifications": 0
   },
   "actual": {
-    "popup": true
+    "popup": false,
+    "notifications": 0
   },
   "pass": true
 }

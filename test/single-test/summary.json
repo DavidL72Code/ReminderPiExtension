@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-10-05T18:05:58.231Z",
-  "systemTime": "Mon Oct 05 2026 14:05:58 GMT-0400 (Eastern Daylight Time)",
+  "generatedAt": "2026-10-05T18:48:59.705Z",
+  "systemTime": "Mon Oct 05 2026 14:48:59 GMT-0400 (Eastern Daylight Time)",
   "pi": {
-    "provider": "openrouter",
-    "model": "moonshotai/kimi-k2.6",
-    "sessionId": "01a10a74-bfe7-76c6-a7f8-6270ceccbd1f"
+    "provider": null,
+    "model": null,
+    "sessionId": null
   },
   "totals": {
-    "cases": 8,
-    "passed": 8,
+    "cases": 11,
+    "passed": 11,
     "failed": 0
   },
   "cases": [
@@ -50,14 +50,32 @@
     },
     {
       "file": "test_7.json",
+      "name": "Daytime 14:00 is silent",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_8.json",
       "name": "PIREMINDER_NOW=02:30 fires the automatic reminder",
       "category": "automatic",
       "pass": true
     },
     {
-      "file": "test_8.json",
+      "file": "test_9.json",
       "name": "PIREMINDER_NOW=14:00 stays silent",
       "category": "automatic",
+      "pass": true
+    },
+    {
+      "file": "test_10.json",
+      "name": "Live Pi startup: PIREMINDER_NOW=02:30 reminds",
+      "category": "live-boot",
+      "pass": true
+    },
+    {
+      "file": "test_11.json",
+      "name": "Live Pi startup: PIREMINDER_NOW=06:00 stays silent",
+      "category": "live-boot",
       "pass": true
     }
   ]

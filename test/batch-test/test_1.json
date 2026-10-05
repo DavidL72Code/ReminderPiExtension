@@ -1,21 +1,58 @@
 {
   "id": 1,
-  "name": "Already reminded today → no duplicate",
+  "name": "Default window 00:00–06:00: boundaries, in-window, dedup, next day",
   "category": "policy",
-  "input": {
-    "times": [
-      "03:00",
-      "04:00"
-    ],
-    "sameDay": true
-  },
-  "expected": {
-    "first": true,
-    "second": false
-  },
-  "actual": {
-    "first": true,
-    "second": false
-  },
+  "scenarios": [
+    "out of boundary",
+    "boundary: start inclusive",
+    "dedup: same day",
+    "in boundary: last minute",
+    "boundary: end exclusive",
+    "next day resumes"
+  ],
+  "steps": [
+    {
+      "scenario": "out of boundary",
+      "check": "/bedtime-test 2026-10-06 23:59",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "boundary: start inclusive",
+      "check": "/bedtime-test 2026-10-07 00:00",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "scenario": "dedup: same day",
+      "check": "/bedtime-test 2026-10-07 03:00",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "in boundary: last minute",
+      "check": "/bedtime-test 2026-10-07 05:59 reset",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    },
+    {
+      "scenario": "boundary: end exclusive",
+      "check": "/bedtime-test 2026-10-07 06:00 reset",
+      "expected": false,
+      "actual": false,
+      "pass": true
+    },
+    {
+      "scenario": "next day resumes",
+      "check": "/bedtime-test 2026-10-08 01:00",
+      "expected": true,
+      "actual": true,
+      "pass": true
+    }
+  ],
   "pass": true
 }

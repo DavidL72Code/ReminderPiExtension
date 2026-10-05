@@ -1,26 +1,66 @@
 {
   "id": 4,
-  "name": "Multi-day date tracking: Oct 6 → Oct 7 → Oct 7 silent → Oct 7 reset",
-  "category": "policy",
-  "input": {
-    "checks": [
-      "2026-10-06 04:30",
-      "2026-10-07 05:00",
-      "2026-10-07 05:30 (no reset)",
-      "2026-10-07 05:30 (reset)"
-    ]
-  },
-  "expected": {
-    "oct6_430": true,
-    "oct7_500": true,
-    "oct7_530_no_reset": false,
-    "oct7_530_reset": true
-  },
-  "actual": {
-    "oct6_430": true,
-    "oct7_500": true,
-    "oct7_530_no_reset": false,
-    "oct7_530_reset": true
-  },
+  "name": "UI flow: popup, dedup, daytime, next day",
+  "category": "ui",
+  "scenarios": [
+    "in boundary: first trigger",
+    "dedup: repeat same day",
+    "out of boundary: daytime",
+    "next day resumes (answer NO)"
+  ],
+  "steps": [
+    {
+      "scenario": "in boundary: first trigger",
+      "check": "/bedtime-test 2025-01-01 02:30 (answer YES)",
+      "expected": {
+        "popup": true,
+        "notifications": 2
+      },
+      "actual": {
+        "popup": true,
+        "notifications": 2
+      },
+      "pass": true
+    },
+    {
+      "scenario": "dedup: repeat same day",
+      "check": "/bedtime-test 2025-01-01 02:35 (answer YES)",
+      "expected": {
+        "popup": false,
+        "notifications": 0
+      },
+      "actual": {
+        "popup": false,
+        "notifications": 0
+      },
+      "pass": true
+    },
+    {
+      "scenario": "out of boundary: daytime",
+      "check": "/bedtime-test 2025-01-01 14:00 reset (answer YES)",
+      "expected": {
+        "popup": false,
+        "notifications": 0
+      },
+      "actual": {
+        "popup": false,
+        "notifications": 0
+      },
+      "pass": true
+    },
+    {
+      "scenario": "next day resumes (answer NO)",
+      "check": "/bedtime-test 2025-01-02 05:59 (answer NO)",
+      "expected": {
+        "popup": true,
+        "notifications": 2
+      },
+      "actual": {
+        "popup": true,
+        "notifications": 2
+      },
+      "pass": true
+    }
+  ],
   "pass": true
 }

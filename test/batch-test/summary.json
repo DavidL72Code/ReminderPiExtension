@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-10-05T18:05:58.241Z",
-  "systemTime": "Mon Oct 05 2026 14:05:58 GMT-0400 (Eastern Daylight Time)",
+  "generatedAt": "2026-10-05T18:48:59.715Z",
+  "systemTime": "Mon Oct 05 2026 14:48:59 GMT-0400 (Eastern Daylight Time)",
   "pi": {
-    "provider": "openrouter",
-    "model": "moonshotai/kimi-k2.6",
-    "sessionId": "01a10a74-bfe7-76c6-a7f8-6270ceccbd1f"
+    "provider": null,
+    "model": null,
+    "sessionId": null
   },
   "totals": {
     "cases": 7,
@@ -14,44 +14,109 @@
   "cases": [
     {
       "file": "test_1.json",
-      "name": "Already reminded today → no duplicate",
+      "name": "Default window 00:00–06:00: boundaries, in-window, dedup, next day",
       "category": "policy",
+      "scenarios": [
+        "out of boundary",
+        "boundary: start inclusive",
+        "dedup: same day",
+        "in boundary: last minute",
+        "boundary: end exclusive",
+        "next day resumes"
+      ],
+      "steps": "6/6 passed",
       "pass": true
     },
     {
       "file": "test_2.json",
-      "name": "Next calendar day resumes reminders",
+      "name": "Wrap-around window 22:00–02:00: boundaries, in-window, dedup",
       "category": "policy",
+      "scenarios": [
+        "wrap boundary: before start",
+        "wrap boundary: start inclusive",
+        "dedup: same evening",
+        "wrap boundary: past midnight is a new calendar day",
+        "dedup: after midnight",
+        "in boundary: last minute",
+        "wrap boundary: end exclusive",
+        "out of boundary: midday",
+        "in boundary: before midnight"
+      ],
+      "steps": "9/9 passed",
       "pass": true
     },
     {
       "file": "test_3.json",
-      "name": "No reminders from 06:00 to 23:59 (18 checks)",
+      "name": "Multi-day dedup and daytime sweep",
       "category": "policy",
+      "scenarios": [
+        "in boundary: day 1",
+        "next day resumes",
+        "dedup: same day",
+        "dedup: return to previous day",
+        "reset re-arms the day",
+        "out of boundary: daytime sweep"
+      ],
+      "steps": "23/23 passed",
       "pass": true
     },
     {
       "file": "test_4.json",
-      "name": "Multi-day date tracking: Oct 6 → Oct 7 → Oct 7 silent → Oct 7 reset",
-      "category": "policy",
+      "name": "UI flow: popup, dedup, daytime, next day",
+      "category": "ui",
+      "scenarios": [
+        "in boundary: first trigger",
+        "dedup: repeat same day",
+        "out of boundary: daytime",
+        "next day resumes (answer NO)"
+      ],
+      "steps": "4/4 passed",
       "pass": true
     },
     {
       "file": "test_5.json",
-      "name": "Return to previous day suppressed by multi-date dedup Set",
-      "category": "policy",
+      "name": "UI flow in wrap-around window 22:00–02:00: boundaries, in-window, dedup",
+      "category": "ui",
+      "scenarios": [
+        "wrap boundary: before start",
+        "wrap boundary: start inclusive",
+        "dedup: same evening",
+        "in boundary: after midnight (answer NO)",
+        "wrap boundary: end exclusive"
+      ],
+      "steps": "5/5 passed",
       "pass": true
     },
     {
       "file": "test_6.json",
-      "name": "Repeat same day is silent (no popup, no notify)",
-      "category": "ui",
+      "name": "Live Pi RPC session: popup, dedup, daytime, invalid input, wrap window",
+      "category": "live-rpc",
+      "scenarios": [
+        "registration",
+        "in boundary: first trigger",
+        "dedup: repeat same day",
+        "out of boundary: daytime",
+        "invalid input: hour",
+        "invalid input: format",
+        "wrap window setup",
+        "wrap boundary: start inclusive",
+        "dedup: same evening",
+        "wrap boundary: end exclusive",
+        "in boundary: after midnight"
+      ],
+      "steps": "11/11 passed",
       "pass": true
     },
     {
       "file": "test_7.json",
-      "name": "Daytime 14:00 is silent",
-      "category": "ui",
+      "name": "Live Pi startup across sessions in wrap-around window 22:00–02:00",
+      "category": "live-boot",
+      "scenarios": [
+        "wrap boundary: before start",
+        "wrap boundary: start inclusive",
+        "dedup: next session same night (persisted)"
+      ],
+      "steps": "3/3 passed",
       "pass": true
     }
   ]

@@ -99,4 +99,6 @@ npm run generate-log               # -> extension/test.json
 | `extension/live-rpc-test.js`, `extension/live-startup-test.js` | Live Pi test code |
 | `test_reminder.py` | Python test code (`reminder.py` is the Python policy) |
 | `extension/write-test-files.ts`, `extension/generate-test-log.ts`, `extension/generate-log-cli.ts` | Report code that writes JSON |
-| `extension/test.json`, `test/test_N.json`, `test/summary.json` | Generated eval reports |
+| `test/single-test/` | Generated reports: one scenario per file |
+| `test/batch-test/` | Generated reports: several scenarios per file (e.g. wrap-around boundaries + in-window + dedup), with a pass/fail per step |
+| `extension/test.json` | Generated eval log |
