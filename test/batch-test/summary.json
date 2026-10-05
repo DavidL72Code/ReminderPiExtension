@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-10-05T18:05:58.241Z",
+  "systemTime": "Mon Oct 05 2026 14:05:58 GMT-0400 (Eastern Daylight Time)",
+  "pi": {
+    "provider": "openrouter",
+    "model": "moonshotai/kimi-k2.6",
+    "sessionId": "01a10a74-bfe7-76c6-a7f8-6270ceccbd1f"
+  },
+  "totals": {
+    "cases": 7,
+    "passed": 7,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "file": "test_1.json",
+      "name": "Already reminded today → no duplicate",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_2.json",
+      "name": "Next calendar day resumes reminders",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_3.json",
+      "name": "No reminders from 06:00 to 23:59 (18 checks)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_4.json",
+      "name": "Multi-day date tracking: Oct 6 → Oct 7 → Oct 7 silent → Oct 7 reset",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_5.json",
+      "name": "Return to previous day suppressed by multi-date dedup Set",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_6.json",
+      "name": "Repeat same day is silent (no popup, no notify)",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_7.json",
+      "name": "Daytime 14:00 is silent",
+      "category": "ui",
+      "pass": true
+    }
+  ]
+}

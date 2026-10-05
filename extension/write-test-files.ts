@@ -1,8 +1,13 @@
 /**
  * write-test-files.ts
  *
- * Runs every reminder test case and writes one numbered JSON file per case
- * into ../test/ (test_1.json, test_2.json, ...) plus test/summary.json.
+ * Runs every reminder test case and writes two sets of JSON reports:
+ *
+ *   ../test/single-test/test_1.json …   individual checks (one scenario each)
+ *   ../test/batch-test/test_1.json …    multi-scenario batches (sweeps, dedup
+ *                                       chains, multi-day tracking, etc.)
+ *
+ * Each directory gets its own summary.json.
  *
  * Five kinds of cases are included:
  *   - policy    : pure time-policy checks (simulated Date)
@@ -28,7 +33,9 @@ import {
 	NOW_OVERRIDE_ENV,
 } from "./reminder";
 
-const OUT_DIR = path.join(__dirname, "..", "test");
+const BASE_DIR = path.join(__dirname, "..", "test");
+const SINGLE_DIR = path.join(BASE_DIR, "single-test");
+const BATCH_DIR = path.join(BASE_DIR, "batch-test");
 const PI_BIN = process.env.PI_BIN || "/Users/davidle/.pi/agent/bin/pi";
 const EXTENSION = path.join(__dirname, "reminder.ts");
 const RUN_LIVE = !process.argv.includes("--no-live");
@@ -44,10 +51,14 @@ interface CaseResult {
 	details?: unknown;
 }
 
-const results: CaseResult[] = [];
+const singleResults: CaseResult[] = [];
+const batchResults: CaseResult[] = [];
 
-function record(r: CaseResult): void {
-	results.push(r);
+function recordSingle(r: Omit<CaseResult, "id">): void {
+	singleResults.push(r);
+}
+function recordBatch(r: Omit<CaseResult, "id">): void {
+	batchResults.push(r);
 }
 
 function atTime(hour: number, minute: number = 0): Date {
@@ -75,10 +86,10 @@ function mockCtx(answer: boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Policy cases
+// 1a. Single policy cases  — one simulated Date, one boolean expectation
 // ---------------------------------------------------------------------------
 
-function policyCases(): void {
+function singlePolicyCases(): void {
 	const cases: Array<{ name: string; time: Date; expected: boolean }> = [
 		{ name: "23:59 does not remind (outside window)", time: atTime(23, 59), expected: false },
 		{ name: "00:00 reminds (window start, inclusive)", time: atTime(0, 0), expected: true },
@@ -88,7 +99,7 @@ function policyCases(): void {
 	for (const c of cases) {
 		resetState();
 		const actual = shouldRemind(c.time);
-		record({
+		recordSingle({
 			name: c.name,
 			category: "policy",
 			input: { now: c.time.toISOString(), localTime: `${String(c.time.getHours()).padStart(2, "0")}:${String(c.time.getMinutes()).padStart(2, "0")}` },
@@ -97,12 +108,18 @@ function policyCases(): void {
 			pass: actual === c.expected,
 		});
 	}
+}
 
+// ---------------------------------------------------------------------------
+// 1b. Batch policy cases — multiple checks grouped into one scenario
+// ---------------------------------------------------------------------------
+
+function batchPolicyCases(): void {
 	// Already reminded today → no duplicate
 	resetState();
 	const first = shouldRemind(atTime(3, 0));
 	const second = shouldRemind(atTime(4, 0));
-	record({
+	recordBatch({
 		name: "Already reminded today → no duplicate",
 		category: "policy",
 		input: { times: ["03:00", "04:00"], sameDay: true },
@@ -116,7 +133,7 @@ function policyCases(): void {
 	const day1 = shouldRemind(atTime(3, 0));
 	const day1b = shouldRemind(atTime(4, 0));
 	const day2 = shouldRemind(new Date(2025, 0, 2, 1, 0));
-	record({
+	recordBatch({
 		name: "Next calendar day resumes reminders",
 		category: "policy",
 		input: { day1: "2025-01-01 03:00/04:00", day2: "2025-01-02 01:00" },
@@ -135,7 +152,7 @@ function policyCases(): void {
 		sweep[`${String(h).padStart(2, "0")}:30`] = r;
 		if (r !== false) sweepPass = false;
 	}
-	record({
+	recordBatch({
 		name: "No reminders from 06:00 to 23:59 (18 checks)",
 		category: "policy",
 		input: { hours: "06:30 … 23:30" },
@@ -151,7 +168,7 @@ function policyCases(): void {
 	const oct7_530_no_reset = shouldRemind(new Date(2026, 9, 7, 5, 30));
 	resetState();
 	const oct7_530_reset = shouldRemind(new Date(2026, 9, 7, 5, 30));
-	record({
+	recordBatch({
 		name: "Multi-day date tracking: Oct 6 → Oct 7 → Oct 7 silent → Oct 7 reset",
 		category: "policy",
 		input: {
@@ -177,12 +194,11 @@ function policyCases(): void {
 	});
 
 	// Return-to-previous-day dedup: two different dates both stay tracked
-	// (regression for single-string date state that only remembered the latest)
 	resetState();
 	const dayA_1 = shouldRemind(new Date(2026, 9, 6, 4, 30));  // Oct 6
 	const dayB_1 = shouldRemind(new Date(2026, 9, 7, 4, 30));  // Oct 7
 	const dayA_2 = shouldRemind(new Date(2026, 9, 6, 5, 0));   // back to Oct 6
-	record({
+	recordBatch({
 		name: "Return to previous day suppressed by multi-date dedup Set",
 		category: "policy",
 		input: {
@@ -195,16 +211,16 @@ function policyCases(): void {
 }
 
 // ---------------------------------------------------------------------------
-// 2. UI cases
+// 2. Single UI cases — one popup / one set of notifications per file
 // ---------------------------------------------------------------------------
 
-async function uiCases(): Promise<void> {
+async function singleUiCases(): Promise<void> {
 	// First trigger answers YES
 	resetState();
 	{
 		const ctx = mockCtx(true);
 		await checkAndNotify(ctx, atTime(2, 30));
-		record({
+		recordSingle({
 			name: "First trigger at 02:30, answer YES",
 			category: "ui",
 			input: { now: "02:30", answer: "yes" },
@@ -220,7 +236,7 @@ async function uiCases(): Promise<void> {
 	{
 		const ctx = mockCtx(false);
 		await checkAndNotify(ctx, atTime(5, 59));
-		record({
+		recordSingle({
 			name: "First trigger at 05:59, answer NO",
 			category: "ui",
 			input: { now: "05:59", answer: "no" },
@@ -230,7 +246,13 @@ async function uiCases(): Promise<void> {
 			details: { popup: ctx.popup },
 		});
 	}
+}
 
+// ---------------------------------------------------------------------------
+// 2b. Batch UI cases — multiple interactions grouped
+// ---------------------------------------------------------------------------
+
+async function batchUiCases(): Promise<void> {
 	// Repeat same day → silent
 	resetState();
 	{
@@ -238,7 +260,7 @@ async function uiCases(): Promise<void> {
 		await checkAndNotify(first, atTime(2, 30));
 		const repeat = mockCtx(true);
 		await checkAndNotify(repeat, atTime(2, 35));
-		record({
+		recordBatch({
 			name: "Repeat same day is silent (no popup, no notify)",
 			category: "ui",
 			input: { first: "02:30", repeat: "02:35" },
@@ -253,7 +275,7 @@ async function uiCases(): Promise<void> {
 	{
 		const ctx = mockCtx(true);
 		await checkAndNotify(ctx, atTime(14, 0));
-		record({
+		recordBatch({
 			name: "Daytime 14:00 is silent",
 			category: "ui",
 			input: { now: "14:00" },
@@ -265,10 +287,10 @@ async function uiCases(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Automatic (PIREMINDER_NOW) cases
+// 3. Single automatic cases
 // ---------------------------------------------------------------------------
 
-async function automaticCases(): Promise<void> {
+async function singleAutomaticCases(): Promise<void> {
 	const original = process.env[NOW_OVERRIDE_ENV];
 	try {
 		// 02:30 → remind
@@ -277,7 +299,7 @@ async function automaticCases(): Promise<void> {
 		resetState();
 		const ctx = mockCtx(true);
 		await checkAndNotify(ctx);
-		record({
+		recordSingle({
 			name: "PIREMINDER_NOW=02:30 fires the automatic reminder",
 			category: "automatic",
 			input: { PIREMINDER_NOW: "02:30" },
@@ -292,7 +314,7 @@ async function automaticCases(): Promise<void> {
 		resetState();
 		const ctx2 = mockCtx(true);
 		await checkAndNotify(ctx2);
-		record({
+		recordSingle({
 			name: "PIREMINDER_NOW=14:00 stays silent",
 			category: "automatic",
 			input: { PIREMINDER_NOW: "14:00" },
@@ -349,11 +371,10 @@ async function liveRpcCases(): Promise<void> {
 
 	await wait(900);
 	send({ type: "get_commands" });
-	// Wait until the response arrives (up to 5s) rather than a fixed delay.
 	for (let i = 0; i < 50 && commandRegistered === null; i++) {
 		await wait(100);
 	}
-	record({
+	recordSingle({
 		name: "Live Pi: bedtime-test command registered",
 		category: "live-rpc",
 		input: "get_commands",
@@ -373,7 +394,7 @@ async function liveRpcCases(): Promise<void> {
 		if (expect === "popup") pass = newD === 1 && newN.length >= 1;
 		else if (expect === "silent") pass = newD === 0 && newN.length === 0;
 		else pass = newD === 0 && newN.some((m) => /Usage|Invalid/.test(m));
-		record({
+		recordSingle({
 			name,
 			category: "live-rpc",
 			input: { command },
@@ -441,7 +462,7 @@ function liveBootCase(
 		const finish = () => {
 			if (done) return;
 			done = true;
-			record({
+			recordSingle({
 				name:
 					opts.name ??
 					`Live Pi startup: PIREMINDER_NOW=${fakeTime} ${
@@ -473,9 +494,62 @@ function liveBootCase(
 			}
 		});
 		child.stderr.on("data", () => {});
-		// Give silent cases time to prove no UI appears.
 		setTimeout(finish, expectReminder ? 12000 : 8000);
 	});
+}
+
+// ---------------------------------------------------------------------------
+// Output helpers
+// ---------------------------------------------------------------------------
+
+function writeResults(
+	dir: string,
+	results: CaseResult[],
+	label: string,
+): void {
+	fs.mkdirSync(dir, { recursive: true });
+	// Remove stale test_N.json files from previous runs.
+	for (const f of fs.readdirSync(dir)) {
+		if (/^test_\d+\.json$/.test(f)) fs.rmSync(path.join(dir, f), { force: true });
+	}
+	results.forEach((r, i) => {
+		const file = { id: i + 1, ...r };
+		fs.writeFileSync(
+			path.join(dir, `test_${i + 1}.json`),
+			JSON.stringify(file, null, 2) + "\n",
+		);
+	});
+
+	const passed = results.filter((r) => r.pass).length;
+	const failed = results.length - passed;
+	fs.writeFileSync(
+		path.join(dir, "summary.json"),
+		JSON.stringify(
+			{
+				generatedAt: new Date().toISOString(),
+				systemTime: new Date().toString(),
+				pi: {
+					provider: process.env.PI_PROVIDER ?? null,
+					model: process.env.PI_MODEL ?? null,
+					sessionId: process.env.PI_SESSION_ID ?? null,
+				},
+				totals: { cases: results.length, passed, failed },
+				cases: results.map((r, i) => ({
+					file: `test_${i + 1}.json`,
+					name: r.name,
+					category: r.category,
+					pass: r.pass,
+				})),
+			},
+			null,
+			2,
+		) + "\n",
+	);
+
+	for (const [i, r] of results.entries()) {
+		console.log(`test_${i + 1}.json  [${r.pass ? "PASS" : "FAIL"}] (${r.category}) ${r.name}`);
+	}
+	console.log(`${passed}/${results.length} passed → ${dir}  (${label})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -483,15 +557,17 @@ function liveBootCase(
 // ---------------------------------------------------------------------------
 
 async function main() {
-	policyCases();
-	await uiCases();
-	await automaticCases();
+	singlePolicyCases();
+	batchPolicyCases();
+	await singleUiCases();
+	await batchUiCases();
+	await singleAutomaticCases();
 
 	if (RUN_LIVE) {
 		try {
 			await liveRpcCases();
 		} catch (e) {
-			record({
+			recordSingle({
 				name: "Live Pi RPC (spawn)",
 				category: "live-rpc",
 				input: "spawn pi --mode rpc",
@@ -534,51 +610,11 @@ async function main() {
 		}
 	}
 
-	// Write numbered files
-	fs.mkdirSync(OUT_DIR, { recursive: true });
-	// Remove stale test_N.json files from previous runs.
-	for (const f of fs.readdirSync(OUT_DIR)) {
-		if (/^test_\d+\.json$/.test(f)) fs.rmSync(path.join(OUT_DIR, f), { force: true });
-	}
-	results.forEach((r, i) => {
-		const file = { id: i + 1, ...r };
-		fs.writeFileSync(
-			path.join(OUT_DIR, `test_${i + 1}.json`),
-			JSON.stringify(file, null, 2) + "\n",
-		);
-	});
+	writeResults(SINGLE_DIR, singleResults, "single-test");
+	writeResults(BATCH_DIR, batchResults, "batch-test");
 
-	const passed = results.filter((r) => r.pass).length;
-	const failed = results.length - passed;
-	fs.writeFileSync(
-		path.join(OUT_DIR, "summary.json"),
-		JSON.stringify(
-			{
-				generatedAt: new Date().toISOString(),
-				systemTime: new Date().toString(),
-				pi: {
-					provider: process.env.PI_PROVIDER ?? null,
-					model: process.env.PI_MODEL ?? null,
-					sessionId: process.env.PI_SESSION_ID ?? null,
-				},
-				totals: { cases: results.length, passed, failed },
-				cases: results.map((r, i) => ({
-					file: `test_${i + 1}.json`,
-					name: r.name,
-					category: r.category,
-					pass: r.pass,
-				})),
-			},
-			null,
-			2,
-		) + "\n",
-	);
-
-	for (const [i, r] of results.entries()) {
-		console.log(`test_${i + 1}.json  [${r.pass ? "PASS" : "FAIL"}] (${r.category}) ${r.name}`);
-	}
-	console.log(`\n${passed}/${results.length} passed → ${OUT_DIR}`);
-	if (failed > 0) process.exit(1);
+	const totalFailed = singleResults.filter((r) => !r.pass).length + batchResults.filter((r) => !r.pass).length;
+	if (totalFailed > 0) process.exit(1);
 }
 
 main().catch((e) => {

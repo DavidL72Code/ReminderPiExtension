@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-10-05T18:05:58.231Z",
+  "systemTime": "Mon Oct 05 2026 14:05:58 GMT-0400 (Eastern Daylight Time)",
+  "pi": {
+    "provider": "openrouter",
+    "model": "moonshotai/kimi-k2.6",
+    "sessionId": "01a10a74-bfe7-76c6-a7f8-6270ceccbd1f"
+  },
+  "totals": {
+    "cases": 8,
+    "passed": 8,
+    "failed": 0
+  },
+  "cases": [
+    {
+      "file": "test_1.json",
+      "name": "23:59 does not remind (outside window)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_2.json",
+      "name": "00:00 reminds (window start, inclusive)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_3.json",
+      "name": "05:59 reminds (inside window)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_4.json",
+      "name": "06:00 does not remind (window end, exclusive)",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_5.json",
+      "name": "First trigger at 02:30, answer YES",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_6.json",
+      "name": "First trigger at 05:59, answer NO",
+      "category": "ui",
+      "pass": true
+    },
+    {
+      "file": "test_7.json",
+      "name": "PIREMINDER_NOW=02:30 fires the automatic reminder",
+      "category": "automatic",
+      "pass": true
+    },
+    {
+      "file": "test_8.json",
+      "name": "PIREMINDER_NOW=14:00 stays silent",
+      "category": "automatic",
+      "pass": true
+    }
+  ]
+}

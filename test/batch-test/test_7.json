@@ -1,0 +1,17 @@
+{
+  "id": 7,
+  "name": "Daytime 14:00 is silent",
+  "category": "ui",
+  "input": {
+    "now": "14:00"
+  },
+  "expected": {
+    "popup": false,
+    "notifications": 0
+  },
+  "actual": {
+    "popup": false,
+    "notifications": 0
+  },
+  "pass": true
+}

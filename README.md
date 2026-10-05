@@ -85,9 +85,9 @@ npm run test:live        # drives a real Pi over RPC (request/response), checks 
 npm run test:startup     # starts a real Pi with a fake clock, checks the automatic reminder
 
 # Batch testing: run every case and write JSON reports
-npm run test:report      # -> test/test_N.json + test/summary.json
-npm run generate-log     # -> extension/test.json
+npm run test:report                # -> test/single-test/ + test/batch-test/
 npm run test:report -- --no-live   # batch without spawning Pi (fast)
+npm run generate-log               # -> extension/test.json
 ```
 
 ## Project layout

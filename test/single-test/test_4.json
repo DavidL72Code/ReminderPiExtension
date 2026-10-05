@@ -1,0 +1,12 @@
+{
+  "id": 4,
+  "name": "06:00 does not remind (window end, exclusive)",
+  "category": "policy",
+  "input": {
+    "now": "2025-01-01T11:00:00.000Z",
+    "localTime": "06:00"
+  },
+  "expected": false,
+  "actual": false,
+  "pass": true
+}

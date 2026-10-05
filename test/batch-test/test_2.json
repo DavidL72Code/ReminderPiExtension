@@ -1,0 +1,20 @@
+{
+  "id": 2,
+  "name": "Next calendar day resumes reminders",
+  "category": "policy",
+  "input": {
+    "day1": "2025-01-01 03:00/04:00",
+    "day2": "2025-01-02 01:00"
+  },
+  "expected": {
+    "day1": true,
+    "day1Repeat": false,
+    "day2": true
+  },
+  "actual": {
+    "day1": true,
+    "day1Repeat": false,
+    "day2": true
+  },
+  "pass": true
+}
