@@ -56,8 +56,8 @@ function resolveNow(): Date {
 	return new Date();
 }
 
-/** Date string of the last day we reminded (dedup state). */
-let remindedDate: string | null = null;
+/** Set of date strings on which the user has already been reminded. */
+let remindedDates: Set<string> = new Set();
 
 /**
  * Whether the automatic reminder is enabled. Persisted so a /bedtime-test off
@@ -101,8 +101,11 @@ export function loadState(): void {
 	try {
 		const raw = fs.readFileSync(statePath(), "utf8");
 		const data = JSON.parse(raw);
-		if (typeof data?.lastRemindedDate === "string") {
-			remindedDate = data.lastRemindedDate;
+		if (Array.isArray(data?.remindedDates)) {
+			for (const d of data.remindedDates) remindedDates.add(d);
+		} else if (typeof data?.lastRemindedDate === "string") {
+			// backward compatibility with single-date state files
+			remindedDates.add(data.lastRemindedDate);
 		}
 		if (typeof data?.enabled === "boolean") {
 			enabled = data.enabled;
@@ -128,7 +131,7 @@ export function persistState(): void {
 			p,
 			JSON.stringify(
 				{
-					lastRemindedDate: remindedDate,
+					remindedDates: Array.from(remindedDates),
 					enabled,
 					windowStart: windowStartMinutes,
 					windowEnd: windowEndMinutes,
@@ -225,10 +228,10 @@ export function isInWindow(now: Date): boolean {
 export function shouldRemind(now: Date): boolean {
 	const today = now.toDateString();
 	// Deduplication: already reminded today → silent.
-	if (remindedDate === today) return false;
+	if (remindedDates.has(today)) return false;
 	// Only remind inside [00:00, 06:00).
 	if (isInWindow(now)) {
-		remindedDate = today;
+		remindedDates.add(today);
 		return true;
 	}
 	// 06:00–23:59 → never remind.
@@ -321,7 +324,7 @@ export default function (pi: ExtensionAPI) {
 			clearInterval(timer);
 			timer = null;
 		}
-		remindedDate = null;
+		remindedDates.clear();
 	});
 
 	// Bedtime test/control command, run against the REAL Pi UI:
@@ -380,9 +383,9 @@ async function runBedtimeTestCommand(
 		return;
 	}
 
-	// reset: clear today's dedup so the automatic reminder can fire again.
+	// reset: clear all dedup dates so the automatic reminder can fire again.
 	if (sub === "reset") {
-		remindedDate = null;
+		remindedDates.clear();
 		persistState();
 		ctx.ui.notify("Today's reminder dedup cleared — the next check will fire if inside the window.", "info");
 		return;
@@ -518,10 +521,10 @@ async function runBedtimeTestCommand(
 		simulated.setHours(hour, minute, 0, 0);
 	}
 
-	// Optional reset so the demo can be repeated in one session. Only the dedup
-	// date is cleared; the on/off choice is preserved.
+	// Optional reset so the demo can be repeated in one session. Clears all
+	// dedup dates; the on/off choice is preserved.
 	if (parts.slice(timeIdx + 1).includes("reset")) {
-		remindedDate = null;
+		remindedDates.clear();
 		persistState();
 	}
 	// Manual checks always run, even when the automatic reminder is off.
@@ -537,7 +540,7 @@ export function setClock(fn?: () => Date): void {
 
 /** Reset all state (for testing). */
 export function resetState(): void {
-	remindedDate = null;
+	remindedDates = new Set();
 	enabled = true;
 	windowStartMinutes = DEFAULT_WINDOW_START_MINUTES;
 	windowEndMinutes = DEFAULT_WINDOW_END_MINUTES;
@@ -547,9 +550,14 @@ export function resetState(): void {
 	}
 }
 
-/** Inspect the dedup state: the date string last reminded, or null. */
+/** Return the first reminded date string (for tests / reporting) or null. */
 export function getRemindedDate(): string | null {
-	return remindedDate;
+	return remindedDates.size > 0 ? Array.from(remindedDates)[0] : null;
+}
+
+/** Check whether a specific calendar date has already been reminded. */
+export function hasRemindedDate(dateStr: string): boolean {
+	return remindedDates.has(dateStr);
 }
 
 /** One check in the in-extension self-test. */
@@ -617,7 +625,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 	// Snapshot so the test never disturbs the user's real configuration.
-	const savedReminded = remindedDate;
+	const savedReminded = new Set(remindedDates);
 	const savedEnabled = enabled;
 	const savedStart = windowStartMinutes;
 	const savedEnd = windowEndMinutes;
@@ -680,7 +688,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 
 		// 1. A regular single in-window reminder at a random in-window time.
 		const regular = randInt(0, DEFAULT_WINDOW_END_MINUTES - 1);
-		remindedDate = null;
+		remindedDates.clear();
 		record({
 			name: "regular in-window",
 			scenario: "Regular in-window",
@@ -692,7 +700,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		});
 
 		// 2. Inclusive window boundaries still remind.
-		remindedDate = null;
+		remindedDates.clear();
 		record({
 			name: "inclusive start",
 			scenario: "Boundary (inclusive)",
@@ -702,7 +710,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 			expected: true,
 			actual: shouldRemind(at(0, 0)),
 		});
-		remindedDate = null;
+		remindedDates.clear();
 		record({
 			name: "inclusive end",
 			scenario: "Boundary (inclusive)",
@@ -722,7 +730,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		];
 		for (let i = 0; i < outsideMinutes.length; i++) {
 			const m = outsideMinutes[i];
-			remindedDate = null;
+			remindedDates.clear();
 			record({
 				name: `outside ${i + 1}`,
 				scenario: "Out of boundary",
@@ -737,7 +745,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		// 4. Two consecutive in-window checks: the second must be silent.
 		const firstTime = randInt(0, DEFAULT_WINDOW_END_MINUTES - 2);
 		const secondTime = randInt(firstTime + 1, DEFAULT_WINDOW_END_MINUTES - 1);
-		remindedDate = null;
+		remindedDates.clear();
 		record({
 			name: "first in-window",
 			scenario: "Consecutive (dedup)",
@@ -759,7 +767,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 
 		// 5. A new calendar day resets the dedup.
 		const nextTime = randInt(0, DEFAULT_WINDOW_END_MINUTES - 1);
-		remindedDate = null;
+		remindedDates.clear();
 		shouldRemind(atMin(nextTime, baseDate));
 		record({
 			name: "next day",
@@ -781,7 +789,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 		windowStartMinutes = customStart;
 		windowEndMinutes = customEnd;
 		const customInside = randInt(customStart, customEnd - 1);
-		remindedDate = null;
+		remindedDates.clear();
 		record({
 			name: "custom inside",
 			scenario: "Custom window",
@@ -792,7 +800,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 			expected: true,
 			actual: shouldRemind(atMin(customInside, otherDate)),
 		});
-		remindedDate = null;
+		remindedDates.clear();
 		record({
 			name: "custom outside",
 			scenario: "Custom window",
@@ -816,7 +824,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 			["wrap midday", randInt(wrapEnd, wrapStart - 1), false],
 		];
 		for (const [name, m, expected] of wrapChecks) {
-			remindedDate = null;
+			remindedDates.clear();
 			record({
 				name,
 				scenario: "Wrap window",
@@ -829,7 +837,7 @@ export function runSelfTest(options?: { seed?: number }): SelfTestSummary {
 			});
 		}
 	} finally {
-		remindedDate = savedReminded;
+		remindedDates = savedReminded;
 		enabled = savedEnabled;
 		windowStartMinutes = savedStart;
 		windowEndMinutes = savedEnd;

@@ -234,11 +234,11 @@ describe("persistent dedup across sessions", () => {
 		setClock();
 	});
 
-	it("persistState writes the reminded date to disk", () => {
+	it("persistState writes the reminded dates to disk", () => {
 		shouldRemind(atTime(2, 0)); // marks today
 		persistState();
 		const saved = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-		expect(saved.lastRemindedDate).toBe(atTime(2, 0).toDateString());
+		expect(saved.remindedDates).toContain(atTime(2, 0).toDateString());
 	});
 
 	it("loadState restores the date so a new session does not re-remind", async () => {

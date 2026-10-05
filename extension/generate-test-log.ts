@@ -15,6 +15,7 @@ import {
 	resetState,
 	isInWindow,
 	getRemindedDate,
+	hasRemindedDate,
 } from "./reminder";
 
 // ---------------------------------------------------------------------------
@@ -74,7 +75,7 @@ function makeRecordingCtx(answer: boolean) {
 async function runCheck(time: Date, answer: boolean): Promise<CheckRecord> {
 	const ctx = makeRecordingCtx(answer);
 	const remindedDateBefore = getRemindedDate();
-	const alreadyRemindedToday = remindedDateBefore === time.toDateString();
+	const alreadyRemindedToday = hasRemindedDate(time.toDateString());
 
 	await checkAndNotify(ctx, time);
 

@@ -1,27 +1,23 @@
 {
   "id": 9,
-  "name": "First trigger at 02:30, answer YES",
-  "category": "ui",
+  "name": "Return to previous day suppressed by multi-date dedup Set",
+  "category": "policy",
   "input": {
-    "now": "02:30",
-    "answer": "yes"
-  },
-  "expected": {
-    "popup": true,
-    "notifications": 2
-  },
-  "actual": {
-    "popup": true,
-    "notifications": [
-      "It's late — take a break and continue again in the morning.",
-      "Great — rest well and pick it up in the morning. 👋"
+    "sequence": [
+      "2026-10-06 04:30",
+      "2026-10-07 04:30",
+      "2026-10-06 05:00"
     ]
   },
-  "pass": true,
-  "details": {
-    "popup": {
-      "title": "Time for a Break",
-      "message": "It's late — take a break and continue again in the morning. Do you acknowledge this advice?"
-    }
-  }
+  "expected": {
+    "dayA_1": true,
+    "dayB_1": true,
+    "dayA_2": false
+  },
+  "actual": {
+    "dayA_1": true,
+    "dayB_1": true,
+    "dayA_2": false
+  },
+  "pass": true
 }

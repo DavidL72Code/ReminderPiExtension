@@ -1,17 +1,18 @@
 {
   "id": 12,
-  "name": "Daytime 14:00 is silent",
+  "name": "Repeat same day is silent (no popup, no notify)",
   "category": "ui",
   "input": {
-    "now": "14:00"
+    "first": "02:30",
+    "repeat": "02:35"
   },
   "expected": {
-    "popup": false,
-    "notifications": 0
+    "repeatPopup": false,
+    "repeatNotifications": 0
   },
   "actual": {
-    "popup": false,
-    "notifications": 0
+    "repeatPopup": false,
+    "repeatNotifications": 0
   },
   "pass": true
 }

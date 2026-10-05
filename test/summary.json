@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-10-05T05:33:56.496Z",
-  "systemTime": "Mon Oct 05 2026 01:33:56 GMT-0400 (Eastern Daylight Time)",
+  "generatedAt": "2026-10-05T18:00:35.655Z",
+  "systemTime": "Mon Oct 05 2026 14:00:35 GMT-0400 (Eastern Daylight Time)",
   "pi": {
     "provider": "openrouter",
     "model": "moonshotai/kimi-k2.6",
     "sessionId": "01a10a74-bfe7-76c6-a7f8-6270ceccbd1f"
   },
   "totals": {
-    "cases": 14,
-    "passed": 14,
+    "cases": 15,
+    "passed": 15,
     "failed": 0
   },
   "cases": [
@@ -62,36 +62,42 @@
     },
     {
       "file": "test_9.json",
+      "name": "Return to previous day suppressed by multi-date dedup Set",
+      "category": "policy",
+      "pass": true
+    },
+    {
+      "file": "test_10.json",
       "name": "First trigger at 02:30, answer YES",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_10.json",
+      "file": "test_11.json",
       "name": "First trigger at 05:59, answer NO",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_11.json",
+      "file": "test_12.json",
       "name": "Repeat same day is silent (no popup, no notify)",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_12.json",
+      "file": "test_13.json",
       "name": "Daytime 14:00 is silent",
       "category": "ui",
       "pass": true
     },
     {
-      "file": "test_13.json",
+      "file": "test_14.json",
       "name": "PIREMINDER_NOW=02:30 fires the automatic reminder",
       "category": "automatic",
       "pass": true
     },
     {
-      "file": "test_14.json",
+      "file": "test_15.json",
       "name": "PIREMINDER_NOW=14:00 stays silent",
       "category": "automatic",
       "pass": true

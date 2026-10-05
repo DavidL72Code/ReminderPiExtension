@@ -175,6 +175,23 @@ function policyCases(): void {
 			oct7_530_no_reset === false &&
 			oct7_530_reset === true,
 	});
+
+	// Return-to-previous-day dedup: two different dates both stay tracked
+	// (regression for single-string date state that only remembered the latest)
+	resetState();
+	const dayA_1 = shouldRemind(new Date(2026, 9, 6, 4, 30));  // Oct 6
+	const dayB_1 = shouldRemind(new Date(2026, 9, 7, 4, 30));  // Oct 7
+	const dayA_2 = shouldRemind(new Date(2026, 9, 6, 5, 0));   // back to Oct 6
+	record({
+		name: "Return to previous day suppressed by multi-date dedup Set",
+		category: "policy",
+		input: {
+			sequence: ["2026-10-06 04:30", "2026-10-07 04:30", "2026-10-06 05:00"],
+		},
+		expected: { dayA_1: true, dayB_1: true, dayA_2: false },
+		actual: { dayA_1, dayB_1, dayA_2 },
+		pass: dayA_1 === true && dayB_1 === true && dayA_2 === false,
+	});
 }
 
 // ---------------------------------------------------------------------------
