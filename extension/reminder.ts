@@ -60,6 +60,14 @@ function resolveNow(): Date {
 let remindedDates: Set<string> = new Set();
 
 /**
+ * Dates already used by manual /bedtime-test checks. Kept apart from
+ * remindedDates so testing a time or a future date never silences the real
+ * reminder on that day. Persisted, so manual dedup still carries over to a new
+ * session.
+ */
+let testDates: Set<string> = new Set();
+
+/**
  * Whether the automatic reminder is enabled. Persisted so a /bedtime-test off
  * choice survives closing and reopening Pi. Manual /bedtime-test HH:MM checks
  * ignore this flag so the extension stays testable.
@@ -107,6 +115,9 @@ export function loadState(): void {
 			// backward compatibility with single-date state files
 			remindedDates.add(data.lastRemindedDate);
 		}
+		if (Array.isArray(data?.testDates)) {
+			for (const d of data.testDates) testDates.add(d);
+		}
 		if (typeof data?.enabled === "boolean") {
 			enabled = data.enabled;
 		}
@@ -132,6 +143,7 @@ export function persistState(): void {
 			JSON.stringify(
 				{
 					remindedDates: Array.from(remindedDates),
+					testDates: Array.from(testDates),
 					enabled,
 					windowStart: windowStartMinutes,
 					windowEnd: windowEndMinutes,
@@ -226,12 +238,17 @@ export function isInWindow(now: Date): boolean {
  * Returns true only the first time, per calendar day, inside the window.
  */
 export function shouldRemind(now: Date): boolean {
+	return shouldRemindIn(remindedDates, now);
+}
+
+/** shouldRemind against a given dedup set (real reminders or manual tests). */
+function shouldRemindIn(dates: Set<string>, now: Date): boolean {
 	const today = now.toDateString();
 	// Deduplication: already reminded today → silent.
-	if (remindedDates.has(today)) return false;
+	if (dates.has(today)) return false;
 	// Only remind inside [00:00, 06:00).
 	if (isInWindow(now)) {
-		remindedDates.add(today);
+		dates.add(today);
 		return true;
 	}
 	// 06:00–23:59 → never remind.
@@ -294,13 +311,14 @@ async function showReminder(ctx: {
 async function checkAndPersist(
 	ctx: Parameters<typeof checkAndNotify>[0],
 	now?: Date,
-	options?: { force?: boolean },
+	options?: { manual?: boolean },
 ): Promise<void> {
 	// The automatic path is silent while reminders are off; manual checks pass
-	// { force: true } so /bedtime-test HH:MM keeps working for testing.
-	if (!enabled && !options?.force) return;
+	// { manual: true } so /bedtime-test HH:MM keeps working for testing. They
+	// dedup against testDates, so a test never silences a real reminder.
+	if (!enabled && !options?.manual) return;
 	const time = now ?? getNow();
-	if (!shouldRemind(time)) return;
+	if (!shouldRemindIn(options?.manual ? testDates : remindedDates, time)) return;
 	persistState();
 	await showReminder(ctx);
 }
@@ -325,6 +343,7 @@ export default function (pi: ExtensionAPI) {
 			timer = null;
 		}
 		remindedDates.clear();
+		testDates.clear();
 	});
 
 	// Bedtime test/control command, run against the REAL Pi UI:
@@ -383,9 +402,11 @@ async function runBedtimeTestCommand(
 		return;
 	}
 
-	// reset: clear all dedup dates so the automatic reminder can fire again.
+	// reset: clear all dedup dates (real and manual) so the automatic reminder
+	// can fire again.
 	if (sub === "reset") {
 		remindedDates.clear();
+		testDates.clear();
 		persistState();
 		ctx.ui.notify("Today's reminder dedup cleared — the next check will fire if inside the window.", "info");
 		return;
@@ -521,14 +542,14 @@ async function runBedtimeTestCommand(
 		simulated.setHours(hour, minute, 0, 0);
 	}
 
-	// Optional reset so the demo can be repeated in one session. Clears all
-	// dedup dates; the on/off choice is preserved.
+	// Optional reset so the demo can be repeated. Clears only the manual test
+	// dates; real reminder dedup and the on/off choice are preserved.
 	if (parts.slice(timeIdx + 1).includes("reset")) {
-		remindedDates.clear();
+		testDates.clear();
 		persistState();
 	}
 	// Manual checks always run, even when the automatic reminder is off.
-	await checkAndPersist(ctx, simulated, { force: true });
+	await checkAndPersist(ctx, simulated, { manual: true });
 }
 
 // --- Testing utilities ---
@@ -541,6 +562,7 @@ export function setClock(fn?: () => Date): void {
 /** Reset all state (for testing). */
 export function resetState(): void {
 	remindedDates = new Set();
+	testDates = new Set();
 	enabled = true;
 	windowStartMinutes = DEFAULT_WINDOW_START_MINUTES;
 	windowEndMinutes = DEFAULT_WINDOW_END_MINUTES;
@@ -558,6 +580,11 @@ export function getRemindedDate(): string | null {
 /** Check whether a specific calendar date has already been reminded. */
 export function hasRemindedDate(dateStr: string): boolean {
 	return remindedDates.has(dateStr);
+}
+
+/** Check whether a manual /bedtime-test check has already used a date. */
+export function hasTestDate(dateStr: string): boolean {
+	return testDates.has(dateStr);
 }
 
 /** One check in the in-extension self-test. */
@@ -936,11 +963,12 @@ export function formatHelp(): string[] {
 		"  1. /bedtime-test [YYYY-MM-DD | Month D YYYY] HH:MM [reset]",
 		"       Simulate a reminder check at a time (e.g. /bedtime-test 4:30).",
 		"       Add an optional date before the time, or add 'reset' to clear",
-		"       today's dedup first so it can fire again.",
+		"       test dedup first so it can fire again. Tests keep their own",
+		"       dedup, so they never silence the real reminder.",
 		"",
 		"  2. /bedtime-test reset",
-		"       Clear today's dedup in a live session so the automatic reminder",
-		"       can fire again on the next check.",
+		"       Clear all dedup (real reminders and tests) so the automatic",
+		"       reminder can fire again on the next check.",
 		"",
 		"  3. /bedtime-test on | off",
 		"       Enable or disable the automatic reminder (persisted).",

@@ -1,0 +1,35 @@
+{
+  "id": 8,
+  "name": "Live Pi startup across sessions in wrap-around window 22:00–02:00",
+  "category": "live-boot",
+  "setup": "state file seeded with window 22:00–02:00",
+  "scenarios": [
+    "wrap boundary: before start",
+    "wrap boundary: start inclusive",
+    "dedup: next session same night (persisted)"
+  ],
+  "steps": [
+    {
+      "scenario": "wrap boundary: before start",
+      "check": "PIREMINDER_NOW=21:59 pi (session 1)",
+      "expected": "silent",
+      "actual": "silent",
+      "pass": true
+    },
+    {
+      "scenario": "wrap boundary: start inclusive",
+      "check": "PIREMINDER_NOW=22:00 pi (session 2)",
+      "expected": "reminder",
+      "actual": "reminder",
+      "pass": true
+    },
+    {
+      "scenario": "dedup: next session same night (persisted)",
+      "check": "PIREMINDER_NOW=23:30 pi (session 3)",
+      "expected": "silent",
+      "actual": "silent",
+      "pass": true
+    }
+  ],
+  "pass": true
+}

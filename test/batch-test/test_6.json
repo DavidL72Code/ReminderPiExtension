@@ -1,141 +1,72 @@
 {
   "id": 6,
-  "name": "Live Pi RPC session: popup, dedup, daytime, invalid input, wrap window",
-  "category": "live-rpc",
+  "name": "Manual tests vs real reminders across Pi sessions",
+  "category": "ui",
   "scenarios": [
-    "registration",
-    "in boundary: first trigger",
-    "dedup: repeat same day",
-    "out of boundary: daytime",
-    "invalid input: hour",
-    "invalid input: format",
-    "wrap window setup",
-    "wrap boundary: start inclusive",
-    "dedup: same evening",
-    "wrap boundary: end exclusive",
-    "in boundary: after midnight"
+    "out of boundary: session starts in daytime",
+    "manual: future date reminds",
+    "manual dedup: same date",
+    "real reminder not blocked by manual test",
+    "manual dedup carried to new session",
+    "real dedup carried to new session",
+    "standalone reset clears real dedup",
+    "standalone reset clears manual dedup"
   ],
   "steps": [
     {
-      "scenario": "registration",
-      "check": "get_commands",
-      "expected": true,
-      "actual": true,
+      "scenario": "out of boundary: session starts in daytime",
+      "check": "new Pi session at 2026-10-09 14:00",
+      "expected": "silent",
+      "actual": "silent",
       "pass": true
     },
     {
-      "scenario": "in boundary: first trigger",
-      "check": "/bedtime-test 02:30 reset",
+      "scenario": "manual: future date reminds",
+      "check": "/bedtime-test 2026-10-10 03:00",
       "expected": "popup",
-      "actual": {
-        "dialogs": 1,
-        "notifications": [
-          "It's late — take a break and continue again in the morning.",
-          "Great — rest well and pick it up in the morning. 👋"
-        ]
-      },
+      "actual": "popup",
       "pass": true
     },
     {
-      "scenario": "dedup: repeat same day",
-      "check": "/bedtime-test 02:35",
+      "scenario": "manual dedup: same date",
+      "check": "/bedtime-test 2026-10-10 03:30",
       "expected": "silent",
-      "actual": {
-        "dialogs": 0,
-        "notifications": []
-      },
+      "actual": "silent",
       "pass": true
     },
     {
-      "scenario": "out of boundary: daytime",
-      "check": "/bedtime-test 14:00 reset",
-      "expected": "silent",
-      "actual": {
-        "dialogs": 0,
-        "notifications": []
-      },
-      "pass": true
-    },
-    {
-      "scenario": "invalid input: hour",
-      "check": "/bedtime-test 25:00 reset",
-      "expected": "warning",
-      "actual": {
-        "dialogs": 0,
-        "notifications": [
-          "Invalid time. Use HH:MM (00:00–23:59)."
-        ]
-      },
-      "pass": true
-    },
-    {
-      "scenario": "invalid input: format",
-      "check": "/bedtime-test abc reset",
-      "expected": "warning",
-      "actual": {
-        "dialogs": 0,
-        "notifications": [
-          "Usage: /bedtime-test [YYYY-MM-DD | Month D YYYY] HH:MM [reset] | on | off | status | time | run_test (run /bedtime-test with no args for the full list)"
-        ]
-      },
-      "pass": true
-    },
-    {
-      "scenario": "wrap window setup",
-      "check": "/bedtime-test time 22:00 02:00",
-      "expected": "window-set",
-      "actual": {
-        "dialogs": 0,
-        "notifications": [
-          "Reminder window set to 22:00–02:00."
-        ]
-      },
-      "pass": true
-    },
-    {
-      "scenario": "wrap boundary: start inclusive",
-      "check": "/bedtime-test 2026-10-06 22:00 reset",
+      "scenario": "real reminder not blocked by manual test",
+      "check": "new Pi session at 2026-10-10 02:00",
       "expected": "popup",
-      "actual": {
-        "dialogs": 1,
-        "notifications": [
-          "It's late — take a break and continue again in the morning.",
-          "Great — rest well and pick it up in the morning. 👋"
-        ]
-      },
+      "actual": "popup",
       "pass": true
     },
     {
-      "scenario": "dedup: same evening",
-      "check": "/bedtime-test 2026-10-06 23:30",
+      "scenario": "manual dedup carried to new session",
+      "check": "/bedtime-test 2026-10-10 03:30",
       "expected": "silent",
-      "actual": {
-        "dialogs": 0,
-        "notifications": []
-      },
+      "actual": "silent",
       "pass": true
     },
     {
-      "scenario": "wrap boundary: end exclusive",
-      "check": "/bedtime-test 2026-10-07 02:00 reset",
+      "scenario": "real dedup carried to new session",
+      "check": "new Pi session at 2026-10-10 02:30",
       "expected": "silent",
-      "actual": {
-        "dialogs": 0,
-        "notifications": []
-      },
+      "actual": "silent",
       "pass": true
     },
     {
-      "scenario": "in boundary: after midnight",
-      "check": "/bedtime-test 2026-10-07 01:59 reset",
+      "scenario": "standalone reset clears real dedup",
+      "check": "/bedtime-test reset, then new Pi session at 2026-10-10 02:45",
       "expected": "popup",
-      "actual": {
-        "dialogs": 1,
-        "notifications": [
-          "It's late — take a break and continue again in the morning.",
-          "Great — rest well and pick it up in the morning. 👋"
-        ]
-      },
+      "actual": "popup",
+      "pass": true
+    },
+    {
+      "scenario": "standalone reset clears manual dedup",
+      "check": "/bedtime-test 2026-10-10 03:30",
+      "expected": "popup",
+      "actual": "popup",
       "pass": true
     }
   ],

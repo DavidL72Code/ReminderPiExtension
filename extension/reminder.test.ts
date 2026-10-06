@@ -24,6 +24,8 @@ import reminder, {
 	setWindow,
 	resetWindow,
 	getRemindedDate,
+	hasRemindedDate,
+	hasTestDate,
 	runSelfTest,
 	formatSelfTestReport,
 	groupSelfTestScenarios,
@@ -663,17 +665,20 @@ describe("reminder window", () => {
 		expect(isDefaultWindow()).toBe(true);
 	});
 
-	it("standalone /bedtime-test reset clears dedup without a time", async () => {
+	it("standalone /bedtime-test reset clears real and manual dedup without a time", async () => {
 		const commands = registeredCommands();
 
-		// Remind once and confirm dedup is set.
-		await commands["bedtime-test"]("3:00", mockCtx());
+		// A real reminder and a manual check both set dedup.
+		shouldRemind(atTime(2, 0));
+		await commands["bedtime-test"]("2025-01-01 3:00", mockCtx());
 		expect(getRemindedDate()).not.toBeNull();
+		expect(hasTestDate(atTime(3, 0).toDateString())).toBe(true);
 
-		// Standalone reset clears dedup.
+		// Standalone reset clears both.
 		const resetCtx = mockCtx();
 		await commands["bedtime-test"]("reset", resetCtx);
 		expect(getRemindedDate()).toBeNull();
+		expect(hasTestDate(atTime(3, 0).toDateString())).toBe(false);
 		expect(resetCtx.ui.notify).toHaveBeenCalledWith(
 			expect.stringContaining("dedup cleared"),
 			"info",
@@ -984,3 +989,100 @@ describe("bedtime-test date tracking", () => {
 	});
 });
 
+
+// ---------------------------------------------------------------------------
+// manual /bedtime-test checks keep their own dedup
+// ---------------------------------------------------------------------------
+
+describe("manual checks vs real reminders", () => {
+	const stateFile = path.join(
+		os.tmpdir(),
+		`pireminder-manual-${process.pid}.json`,
+	);
+
+	/** Register the factory and return its event handlers and commands. */
+	function registered() {
+		const handlers: Record<string, (...args: any[]) => any> = {};
+		const commands: Record<string, (args: string, ctx: any) => Promise<void>> =
+			{};
+		reminder({
+			on: (event: string, handler: (...args: any[]) => any) => {
+				handlers[event] = handler;
+			},
+			registerCommand: (name: string, cfg: any) => {
+				commands[name] = cfg.handler;
+			},
+			registerTool: () => {},
+		} as any);
+		return { handlers, commands };
+	}
+
+	beforeEach(() => {
+		process.env[STATE_ENV] = stateFile;
+		clearPersistedState();
+		resetState();
+	});
+
+	afterEach(() => {
+		clearPersistedState();
+		resetState();
+		setClock();
+		delete process.env[STATE_ENV];
+	});
+
+	it("a manual check on a future date does not silence that night after restarting Pi", async () => {
+		jest.useFakeTimers();
+		try {
+			const { handlers, commands } = registered();
+
+			// Session 1: test a future date, then close Pi.
+			await commands["bedtime-test"]("2026-10-10 03:00", mockCtx());
+			await handlers["session_shutdown"]({ type: "session_shutdown" });
+
+			// Session 2 on that real date: the automatic reminder still fires.
+			setClock(() => new Date(2026, 9, 10, 2, 0));
+			const ctx = mockCtx();
+			await handlers["session_start"]({ type: "session_start" }, ctx);
+			expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
+		} finally {
+			resetState();
+			jest.useRealTimers();
+		}
+	});
+
+	it("manual dedup is saved and carries over to a new session", async () => {
+		const { commands } = registered();
+		await commands["bedtime-test"]("2026-10-10 03:00", mockCtx());
+
+		const saved = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+		expect(saved.testDates).toEqual([new Date(2026, 9, 10).toDateString()]);
+		expect(saved.remindedDates).toEqual([]);
+
+		// New session: same manual date is silent.
+		resetState();
+		loadState();
+		const repeat = mockCtx();
+		await commands["bedtime-test"]("2026-10-10 03:30", repeat);
+		expect(repeat.ui.confirm).not.toHaveBeenCalled();
+	});
+
+	it("a real reminder does not silence a manual check the same day", async () => {
+		const { commands } = registered();
+		expect(shouldRemind(atTime(2, 0))).toBe(true); // real reminder, Jan 1
+
+		const manual = mockCtx();
+		await commands["bedtime-test"]("2025-01-01 3:00", manual);
+		expect(manual.ui.confirm).toHaveBeenCalledTimes(1);
+	});
+
+	it("HH:MM reset clears only manual dedup, not the real reminder", async () => {
+		const { commands } = registered();
+		shouldRemind(atTime(2, 0)); // real reminder, Jan 1
+		await commands["bedtime-test"]("2025-01-01 3:00", mockCtx());
+
+		const again = mockCtx();
+		await commands["bedtime-test"]("2025-01-01 3:30 reset", again);
+		expect(again.ui.confirm).toHaveBeenCalledTimes(1);
+		expect(hasRemindedDate(atTime(0, 0).toDateString())).toBe(true);
+	});
+});

@@ -1,0 +1,51 @@
+{
+  "id": 9,
+  "name": "Live Pi: manual test does not silence the real reminder",
+  "category": "live-boot",
+  "scenarios": [
+    "manual: first test today",
+    "real reminder not blocked by manual test",
+    "manual dedup carried to new session",
+    "real dedup carried to new session"
+  ],
+  "steps": [
+    {
+      "scenario": "manual: first test today",
+      "check": "/bedtime-test 02:30 (session 1)",
+      "expected": "popup",
+      "actual": {
+        "dialogs": 1,
+        "notifications": [
+          "It's late — take a break and continue again in the morning.",
+          "Great — rest well and pick it up in the morning. 👋"
+        ]
+      },
+      "pass": true
+    },
+    {
+      "scenario": "real reminder not blocked by manual test",
+      "check": "PIREMINDER_NOW=02:30 pi (session 2)",
+      "expected": "reminder",
+      "actual": "reminder",
+      "pass": true
+    },
+    {
+      "scenario": "manual dedup carried to new session",
+      "check": "/bedtime-test 02:35 (session 3)",
+      "expected": "silent",
+      "actual": {
+        "dialogs": 0,
+        "notifications": []
+      },
+      "pass": true
+    },
+    {
+      "scenario": "real dedup carried to new session",
+      "check": "PIREMINDER_NOW=02:40 pi (session 4)",
+      "expected": "silent",
+      "actual": "silent",
+      "pass": true
+    }
+  ],
+  "pass": true
+}

@@ -28,10 +28,11 @@ import * as path from "path";
 import * as os from "os";
 import { spawn } from "child_process";
 import * as readline from "readline";
-import {
+import reminder, {
 	shouldRemind,
 	checkAndNotify,
 	resetState,
+	clearPersistedState,
 	setClock,
 	getWindow,
 	isDefaultWindow,
@@ -346,6 +347,77 @@ async function batchUiCases(): Promise<void> {
 	);
 }
 
+/**
+ * Manual /bedtime-test checks vs the real reminder across simulated Pi
+ * sessions (session_shutdown, then session_start loading the state file).
+ * Manual checks keep their own dedup, so they never silence a real night.
+ */
+async function manualVsRealCases(): Promise<void> {
+	const handlers: Record<string, (...args: any[]) => any> = {};
+	const commands: Record<string, (args: string, ctx: any) => Promise<void>> = {};
+	reminder({
+		on: (event: string, h: (...args: any[]) => any) => {
+			handlers[event] = h;
+		},
+		registerCommand: (name: string, cfg: any) => {
+			commands[name] = cfg.handler;
+		},
+	} as any);
+
+	const openSession = async (stamp: string, ctx: ReturnType<typeof mockCtx>) => {
+		await handlers["session_shutdown"]({ type: "session_shutdown" });
+		setClock(() => at(stamp));
+		await handlers["session_start"]({ type: "session_start" }, ctx);
+	};
+	const step = async (
+		scenario: string,
+		check: string,
+		expectPopup: boolean,
+		run: (ctx: ReturnType<typeof mockCtx>) => Promise<void>,
+	): Promise<BatchStep> => {
+		const ctx = mockCtx(true);
+		await run(ctx);
+		return {
+			scenario,
+			check,
+			expected: expectPopup ? "popup" : "silent",
+			actual: ctx.popup ? "popup" : "silent",
+			pass: !!ctx.popup === expectPopup,
+		};
+	};
+	const manual = (scenario: string, args: string, expectPopup: boolean) =>
+		step(scenario, `/bedtime-test ${args}`, expectPopup, (ctx) => commands["bedtime-test"](args, ctx));
+	const session = (scenario: string, stamp: string, expectPopup: boolean) =>
+		step(scenario, `new Pi session at ${stamp}`, expectPopup, (ctx) => openSession(stamp, ctx));
+
+	clearPersistedState();
+	resetState();
+	try {
+		recordBatch("Manual tests vs real reminders across Pi sessions", "ui", [
+			await session("out of boundary: session starts in daytime", "2026-10-09 14:00", false),
+			await manual("manual: future date reminds", "2026-10-10 03:00", true),
+			await manual("manual dedup: same date", "2026-10-10 03:30", false),
+			await session("real reminder not blocked by manual test", "2026-10-10 02:00", true),
+			await manual("manual dedup carried to new session", "2026-10-10 03:30", false),
+			await session("real dedup carried to new session", "2026-10-10 02:30", false),
+			await step(
+				"standalone reset clears real dedup",
+				"/bedtime-test reset, then new Pi session at 2026-10-10 02:45",
+				true,
+				async (ctx) => {
+					await commands["bedtime-test"]("reset", mockCtx(true));
+					await openSession("2026-10-10 02:45", ctx);
+				},
+			),
+			await manual("standalone reset clears manual dedup", "2026-10-10 03:30", true),
+		]);
+	} finally {
+		await handlers["session_shutdown"]({ type: "session_shutdown" });
+		setClock();
+		resetState();
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 3. Single automatic cases
 // ---------------------------------------------------------------------------
@@ -399,16 +471,52 @@ function wait(ms: number): Promise<void> {
 
 type LiveExpect = "popup" | "silent" | "warning" | "window-set";
 
-async function liveRpcCases(statePath: string): Promise<void> {
+interface LiveOutput {
+	dialogs: number;
+	notifications: string[];
+}
+
+function liveMatches(out: LiveOutput, expect: LiveExpect): boolean {
+	if (expect === "popup") return out.dialogs === 1 && out.notifications.length >= 1;
+	if (expect === "silent") return out.dialogs === 0 && out.notifications.length === 0;
+	if (expect === "window-set") return out.dialogs === 0 && out.notifications.some((m) => /window set to/.test(m));
+	return out.dialogs === 0 && out.notifications.some((m) => /Usage|Invalid/.test(m));
+}
+
+/**
+ * Start a real Pi over RPC. `run` sends one prompt and reports the dialogs and
+ * notifications it caused. Pass `sessionDir` to get a full session (which
+ * loads the state file on session_start); otherwise Pi runs with --no-session.
+ * `fakeTime` sets PIREMINDER_NOW for the session's automatic check.
+ */
+async function openRpc(
+	statePath: string,
+	opts: { sessionDir?: string; fakeTime?: string } = {},
+) {
 	const notifications: string[] = [];
 	let dialogs = 0;
 	let commandRegistered: boolean | null = null;
-	const steps: BatchStep[] = [];
 
 	const child = spawn(
 		PI_BIN,
-		["--mode", "rpc", "--no-session", "--no-tools", "--no-extensions", "--extension", EXTENSION, "--offline"],
-		{ stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, [STATE_ENV]: statePath } },
+		[
+			"--mode",
+			"rpc",
+			...(opts.sessionDir ? ["--session-dir", opts.sessionDir] : ["--no-session"]),
+			"--no-tools",
+			"--no-extensions",
+			"--extension",
+			EXTENSION,
+			"--offline",
+		],
+		{
+			stdio: ["pipe", "pipe", "pipe"],
+			env: {
+				...process.env,
+				[STATE_ENV]: statePath,
+				...(opts.fakeTime ? { [NOW_OVERRIDE_ENV]: opts.fakeTime } : {}),
+			},
+		},
 	);
 	const send = (o: unknown) => child.stdin.write(JSON.stringify(o) + "\n");
 
@@ -437,33 +545,36 @@ async function liveRpcCases(statePath: string): Promise<void> {
 	for (let i = 0; i < 50 && commandRegistered === null; i++) {
 		await wait(100);
 	}
-	steps.push({
-		scenario: "registration",
-		check: "get_commands",
-		expected: true,
-		actual: commandRegistered,
-		pass: commandRegistered === true,
-	});
+
+	return {
+		commandRegistered,
+		async run(command: string): Promise<LiveOutput> {
+			const n0 = notifications.length;
+			const d0 = dialogs;
+			send({ type: "prompt", message: command });
+			await wait(1800);
+			return { dialogs: dialogs - d0, notifications: notifications.slice(n0) };
+		},
+		close: () => child.kill("SIGTERM"),
+	};
+}
+
+/** One Pi session, many scenarios → one batch file. */
+async function liveRpcCases(statePath: string): Promise<void> {
+	const pi = await openRpc(statePath);
+	const steps: BatchStep[] = [
+		{
+			scenario: "registration",
+			check: "get_commands",
+			expected: true,
+			actual: pi.commandRegistered,
+			pass: pi.commandRegistered === true,
+		},
+	];
 
 	async function liveStep(scenario: string, command: string, expect: LiveExpect) {
-		const n0 = notifications.length;
-		const d0 = dialogs;
-		send({ type: "prompt", message: command });
-		await wait(1800);
-		const newN = notifications.slice(n0);
-		const newD = dialogs - d0;
-		let pass = false;
-		if (expect === "popup") pass = newD === 1 && newN.length >= 1;
-		else if (expect === "silent") pass = newD === 0 && newN.length === 0;
-		else if (expect === "window-set") pass = newD === 0 && newN.some((m) => /window set to/.test(m));
-		else pass = newD === 0 && newN.some((m) => /Usage|Invalid/.test(m));
-		steps.push({
-			scenario,
-			check: command,
-			expected: expect,
-			actual: { dialogs: newD, notifications: newN },
-			pass,
-		});
+		const actual = await pi.run(command);
+		steps.push({ scenario, check: command, expected: expect, actual, pass: liveMatches(actual, expect) });
 	}
 
 	await liveStep("in boundary: first trigger", "/bedtime-test 02:30 reset", "popup");
@@ -477,7 +588,7 @@ async function liveRpcCases(statePath: string): Promise<void> {
 	await liveStep("wrap boundary: end exclusive", "/bedtime-test 2026-10-07 02:00 reset", "silent");
 	await liveStep("in boundary: after midnight", "/bedtime-test 2026-10-07 01:59 reset", "popup");
 
-	child.kill("SIGTERM");
+	pi.close();
 	recordBatch(
 		"Live Pi RPC session: popup, dedup, daytime, invalid input, wrap window",
 		"live-rpc",
@@ -563,30 +674,56 @@ async function bootSingle(fakeTime: string, expectReminder: boolean, suffix: str
 	}
 }
 
+/** Batch steps that each start a fresh Pi process sharing one state file. */
+function liveSessions(statePath: string, tag: string) {
+	let session = 0;
+	return {
+		/** Pi startup at `fakeTime`: did the automatic reminder fire? */
+		async boot(scenario: string, fakeTime: string, expectReminder: boolean): Promise<BatchStep> {
+			const n = ++session;
+			const reminded = await liveBootCase(fakeTime, expectReminder, {
+				statePath,
+				sessionSuffix: `${tag}-${n}`,
+			});
+			return {
+				scenario,
+				check: `${NOW_OVERRIDE_ENV}=${fakeTime} pi (session ${n})`,
+				expected: expectReminder ? "reminder" : "silent",
+				actual: reminded ? "reminder" : "silent",
+				pass: reminded === expectReminder,
+			};
+		},
+		/** Pi session (clock pinned to daytime so its own startup check is silent) running one command. */
+		async rpc(scenario: string, command: string, expect: LiveExpect): Promise<BatchStep> {
+			const n = ++session;
+			const pi = await openRpc(statePath, {
+				sessionDir: path.join(os.tmpdir(), `pireminder-report-${tag}-${n}`),
+				fakeTime: "14:00",
+			});
+			try {
+				const actual = await pi.run(command);
+				return {
+					scenario,
+					check: `${command} (session ${n})`,
+					expected: expect,
+					actual,
+					// Registration proves the extension loaded, so "silent" is real.
+					pass: pi.commandRegistered === true && liveMatches(actual, expect),
+				};
+			} finally {
+				pi.close();
+			}
+		},
+	};
+}
+
 /**
  * Separate Pi processes sharing one state file pre-seeded with a wrap-around
  * window: checks the persisted window boundary and cross-session dedup.
  */
 async function bootBatch(): Promise<void> {
 	const statePath = path.join(os.tmpdir(), `pireminder-persist-${Date.now()}.json`);
-	const bootStep = async (
-		scenario: string,
-		session: number,
-		fakeTime: string,
-		expectReminder: boolean,
-	): Promise<BatchStep> => {
-		const reminded = await liveBootCase(fakeTime, expectReminder, {
-			statePath,
-			sessionSuffix: `persist-${session}`,
-		});
-		return {
-			scenario,
-			check: `${NOW_OVERRIDE_ENV}=${fakeTime} pi (session ${session})`,
-			expected: expectReminder ? "reminder" : "silent",
-			actual: reminded ? "reminder" : "silent",
-			pass: reminded === expectReminder,
-		};
-	};
+	const pi = liveSessions(statePath, "persist");
 	try {
 		fs.writeFileSync(
 			statePath,
@@ -596,12 +733,33 @@ async function bootBatch(): Promise<void> {
 			"Live Pi startup across sessions in wrap-around window 22:00–02:00",
 			"live-boot",
 			[
-				await bootStep("wrap boundary: before start", 1, "21:59", false),
-				await bootStep("wrap boundary: start inclusive", 2, "22:00", true),
-				await bootStep("dedup: next session same night (persisted)", 3, "23:30", false),
+				await pi.boot("wrap boundary: before start", "21:59", false),
+				await pi.boot("wrap boundary: start inclusive", "22:00", true),
+				await pi.boot("dedup: next session same night (persisted)", "23:30", false),
 			],
 			"state file seeded with window 22:00–02:00",
 		);
+	} finally {
+		fs.rmSync(statePath, { force: true });
+	}
+}
+
+/**
+ * Separate Pi processes sharing one state file: a manual /bedtime-test check
+ * must not silence the real startup reminder, while each list's dedup still
+ * carries over to the next session.
+ */
+async function manualVsBootBatch(): Promise<void> {
+	const statePath = path.join(os.tmpdir(), `pireminder-manual-${Date.now()}.json`);
+	const pi = liveSessions(statePath, "manual");
+	try {
+		fs.rmSync(statePath, { force: true });
+		recordBatch("Live Pi: manual test does not silence the real reminder", "live-boot", [
+			await pi.rpc("manual: first test today", "/bedtime-test 02:30", "popup"),
+			await pi.boot("real reminder not blocked by manual test", "02:30", true),
+			await pi.rpc("manual dedup carried to new session", "/bedtime-test 02:35", "silent"),
+			await pi.boot("real dedup carried to new session", "02:40", false),
+		]);
 	} finally {
 		fs.rmSync(statePath, { force: true });
 	}
@@ -678,6 +836,7 @@ async function main() {
 		batchPolicyCases();
 		await singleUiCases();
 		await batchUiCases();
+		await manualVsRealCases();
 		await singleAutomaticCases();
 	} finally {
 		resetState();
@@ -700,6 +859,7 @@ async function main() {
 		await bootSingle("02:30", true, "a");
 		await bootSingle("06:00", false, "b");
 		await bootBatch();
+		await manualVsBootBatch();
 	}
 
 	writeResults(SINGLE_DIR, singleResults, "single-test");

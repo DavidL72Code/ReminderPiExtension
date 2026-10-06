@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-10-05T18:48:59.715Z",
-  "systemTime": "Mon Oct 05 2026 14:48:59 GMT-0400 (Eastern Daylight Time)",
+  "generatedAt": "2026-10-05T23:45:35.554Z",
+  "systemTime": "Mon Oct 05 2026 19:45:35 GMT-0400 (Eastern Daylight Time)",
   "pi": {
     "provider": null,
     "model": null,
     "sessionId": null
   },
   "totals": {
-    "cases": 7,
-    "passed": 7,
+    "cases": 9,
+    "passed": 9,
     "failed": 0
   },
   "cases": [
@@ -89,6 +89,23 @@
     },
     {
       "file": "test_6.json",
+      "name": "Manual tests vs real reminders across Pi sessions",
+      "category": "ui",
+      "scenarios": [
+        "out of boundary: session starts in daytime",
+        "manual: future date reminds",
+        "manual dedup: same date",
+        "real reminder not blocked by manual test",
+        "manual dedup carried to new session",
+        "real dedup carried to new session",
+        "standalone reset clears real dedup",
+        "standalone reset clears manual dedup"
+      ],
+      "steps": "8/8 passed",
+      "pass": true
+    },
+    {
+      "file": "test_7.json",
       "name": "Live Pi RPC session: popup, dedup, daytime, invalid input, wrap window",
       "category": "live-rpc",
       "scenarios": [
@@ -108,7 +125,7 @@
       "pass": true
     },
     {
-      "file": "test_7.json",
+      "file": "test_8.json",
       "name": "Live Pi startup across sessions in wrap-around window 22:00–02:00",
       "category": "live-boot",
       "scenarios": [
@@ -117,6 +134,19 @@
         "dedup: next session same night (persisted)"
       ],
       "steps": "3/3 passed",
+      "pass": true
+    },
+    {
+      "file": "test_9.json",
+      "name": "Live Pi: manual test does not silence the real reminder",
+      "category": "live-boot",
+      "scenarios": [
+        "manual: first test today",
+        "real reminder not blocked by manual test",
+        "manual dedup carried to new session",
+        "real dedup carried to new session"
+      ],
+      "steps": "4/4 passed",
       "pass": true
     }
   ]
